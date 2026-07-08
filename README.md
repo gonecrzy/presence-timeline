@@ -45,12 +45,12 @@ This first milestone provides:
 - Provider abstraction for pluggable location sources
 - Open-by-default auth seam that can switch to OAuth/OIDC later
 - Home Assistant event normalizer boundary
+- Config-driven Home Assistant member bootstrap and ingestion worker
 - Docker Compose runtime for API + PostGIS
 
 Not implemented yet:
 
 - Real family login flow
-- Persistent ingestion worker
 - Trip computation jobs
 - Home Assistant dashboard publishing
 - Android app
@@ -64,3 +64,17 @@ Planned future mode:
 - `GPSTRACK_AUTH_MODE=oidc`
 - issuer and client configuration via `.env`
 - backend-issued family scoping derived from verified identity claims
+
+## Home Assistant bootstrap
+
+For live ingestion, seed the initial member-to-entity mapping with `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` as JSON in `.env`:
+
+```json
+[{"display_name":"Sam","entity_id":"device_tracker.sam_phone","is_child":true,"device_label":"Sam Phone"}]
+```
+
+Then run the API and ingestion worker:
+
+```bash
+docker compose up --build api ingestor db
+```

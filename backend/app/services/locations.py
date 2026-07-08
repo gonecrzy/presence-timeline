@@ -20,11 +20,12 @@ class LocationService:
             return None
 
         device = None
-        if event.source_device_id:
+        device_external_id = event.source_entity_id
+        if device_external_id:
             device = self.repository.upsert_device_for_member(
                 member=member,
                 provider=event.provider.value,
-                external_id=event.source_device_id,
+                external_id=device_external_id,
                 label=event.source_device_name,
             )
 
@@ -36,7 +37,7 @@ class LocationService:
 
         point = LocationPoint(
             member_id=member["id"] if isinstance(member, dict) else member.id,
-            device_id=device.get("external_id") if isinstance(device, dict) else getattr(device, "id", None),
+            device_id=device.get("id") if isinstance(device, dict) else getattr(device, "id", None),
             provider=event.provider.value,
             source_entity_id=event.source_entity_id,
             observed_at=event.observed_at,
@@ -49,8 +50,8 @@ class LocationService:
             is_charging=event.is_charging,
         )
         stored = self.repository.add_location_point(point)
-        if hasattr(self.repository, "db"):
-            self.repository.db.commit()
+        if hasattr(self.repository, "commit"):
+            self.repository.commit()
         return stored
 
     def get_latest_location(self, member_id: UUID):

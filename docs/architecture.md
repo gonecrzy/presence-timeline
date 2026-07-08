@@ -41,6 +41,7 @@ These tables are provider-agnostic and represent backend-owned truth after norma
 - `LocationProvider` interface defines the contract for event-producing integrations.
 - `HomeAssistantWebSocketProvider` is the first implementation.
 - Provider-specific payloads are normalized into backend domain events before persistence.
+- A separate ingestion worker consumes Home Assistant events and writes normalized history into Postgres.
 
 ### Authentication layer
 
@@ -69,7 +70,6 @@ This foundation milestone intentionally stops at:
 It does not yet include:
 
 - real authentication enforcement
-- ingestion worker orchestration
 - computed trip pipeline
 - public timeline/playback endpoints
 - mobile client

@@ -16,6 +16,7 @@ class FakeLocationRepository:
 
     def upsert_device_for_member(self, member, provider: str, external_id: str, label: str | None):
         device = {
+            "id": external_id,
             "member_id": member["id"],
             "provider": provider,
             "external_id": external_id,
@@ -65,7 +66,7 @@ def test_ingest_location_event_persists_point_for_known_member() -> None:
     assert stored.member_id == member_id
     assert stored.provider == "home_assistant"
     assert stored.battery_level == 81
-    assert repository.devices["pixel-8"]["label"] == "Sam Phone"
+    assert repository.devices["device_tracker.sam_phone"]["label"] == "Sam Phone"
 
 
 def test_ingest_location_event_ignores_unknown_member_mapping() -> None:

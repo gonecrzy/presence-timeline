@@ -12,6 +12,47 @@ class LocationRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def get_family_by_slug(self, family_slug: str) -> Family | None:
+        stmt: Select[tuple[Family]] = select(Family).where(Family.slug == family_slug)
+        return self.db.scalar(stmt)
+
+    def ensure_family(self, family_slug: str, family_name: str) -> Family:
+        family = self.get_family_by_slug(family_slug)
+        if family is None:
+            family = Family(name=family_name, slug=family_slug)
+            self.db.add(family)
+            self.db.flush()
+        else:
+            family.name = family_name
+        return family
+
+    def ensure_member(
+        self,
+        family: Family,
+        display_name: str,
+        is_child: bool,
+        avatar_color: str | None,
+    ) -> Member:
+        stmt: Select[tuple[Member]] = (
+            select(Member)
+            .where(Member.family_id == family.id)
+            .where(Member.display_name == display_name)
+        )
+        member = self.db.scalar(stmt)
+        if member is None:
+            member = Member(
+                family_id=family.id,
+                display_name=display_name,
+                is_child=is_child,
+                avatar_color=avatar_color,
+            )
+            self.db.add(member)
+            self.db.flush()
+        else:
+            member.is_child = is_child
+            member.avatar_color = avatar_color
+        return member
+
     def list_members_for_family_slug(self, family_slug: str) -> list[Member]:
         stmt: Select[tuple[Member]] = (
             select(Member)
@@ -49,6 +90,9 @@ class LocationRepository:
         device.label = label
         device.last_seen_at = member.last_seen_at
         return device
+
+    def commit(self) -> None:
+        self.db.commit()
 
     def add_location_point(self, point: LocationPoint) -> LocationPoint:
         self.db.add(point)

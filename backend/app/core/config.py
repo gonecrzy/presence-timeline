@@ -1,7 +1,16 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class HomeAssistantBootstrapMember(BaseModel):
+    display_name: str
+    entity_id: str
+    is_child: bool = True
+    avatar_color: str | None = None
+    device_label: str | None = None
 
 
 class Settings(BaseSettings):
@@ -13,11 +22,14 @@ class Settings(BaseSettings):
     auth_mode: Literal["open", "oidc"] = "open"
     open_auth_family_slug: str = "dev-family"
     open_auth_parent_subject: str = "dev-parent"
+    default_family_name: str = "GpsTrack Family"
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
     auto_create_tables: bool = True
+    enable_home_assistant_ingestion: bool = False
+    home_assistant_bootstrap_members: list[HomeAssistantBootstrapMember] = Field(default_factory=list)
     home_assistant_ws_url: str = "ws://homeassistant.local:8123/api/websocket"
     home_assistant_access_token: str = "replace-me"
 
