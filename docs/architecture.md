@@ -22,6 +22,7 @@ Build a private, self-hosted family location platform where parents can answer:
 - FastAPI application
 - Versioned REST routes under `/api/v1`
 - No Home Assistant field names in public responses
+- App auth is independent from Home Assistant provider auth
 
 ### Domain layer
 
@@ -40,6 +41,13 @@ These tables are provider-agnostic and represent backend-owned truth after norma
 - `LocationProvider` interface defines the contract for event-producing integrations.
 - `HomeAssistantWebSocketProvider` is the first implementation.
 - Provider-specific payloads are normalized into backend domain events before persistence.
+
+### Authentication layer
+
+- Backend-to-Home-Assistant auth uses Home Assistant bearer tokens only for provider access.
+- Family-facing app auth remains separate from Home Assistant.
+- Current mode is intentionally `open` for local/private development.
+- Future mode will support external OAuth/OIDC providers such as Authentik through a single request-auth dependency.
 
 ### Storage
 
@@ -60,7 +68,7 @@ This foundation milestone intentionally stops at:
 
 It does not yet include:
 
-- authentication
+- real authentication enforcement
 - ingestion worker orchestration
 - computed trip pipeline
 - public timeline/playback endpoints

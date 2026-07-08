@@ -43,13 +43,24 @@ This first milestone provides:
 - FastAPI app scaffold with health and member routes
 - SQLAlchemy/PostGIS domain model
 - Provider abstraction for pluggable location sources
+- Open-by-default auth seam that can switch to OAuth/OIDC later
 - Home Assistant event normalizer boundary
 - Docker Compose runtime for API + PostGIS
 
 Not implemented yet:
 
-- Auth and family login flow
+- Real family login flow
 - Persistent ingestion worker
 - Trip computation jobs
 - Home Assistant dashboard publishing
 - Android app
+
+## Auth posture
+
+The API currently runs in `open` auth mode for early development. Protected app routes already flow through a central auth dependency so they can later switch to an external OIDC provider such as Authentik without changing every route surface.
+
+Planned future mode:
+
+- `GPSTRACK_AUTH_MODE=oidc`
+- issuer and client configuration via `.env`
+- backend-issued family scoping derived from verified identity claims

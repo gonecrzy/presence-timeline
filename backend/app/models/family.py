@@ -13,6 +13,7 @@ class Family(TimestampMixin, Base):
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
 
     members: Mapped[list["Member"]] = relationship(back_populates="family")
 

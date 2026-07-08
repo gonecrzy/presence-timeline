@@ -1,6 +1,8 @@
 .DS_Store
 .env
 .env.local
+.env.*
+!.env.example
 .pytest_cache/
 .ruff_cache/
 .venv/
@@ -9,9 +11,21 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.log
+*.sqlite3
+.coverage
+.coverage.*
+.mypy_cache/
+.pyre/
+.tox/
+.nox/
+.python-version
+htmlcov/
 
 backend/.venv/
 backend/.pytest_cache/
+backend/.ruff_cache/
+backend/htmlcov/
 
 .idea/
 .vscode/

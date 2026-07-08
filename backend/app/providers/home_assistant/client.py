@@ -1,4 +1,7 @@
 from collections.abc import AsyncIterator
+import json
+
+import websockets
 
 from app.domain.events import NormalizedLocationEvent
 from app.providers.base import LocationProvider
@@ -12,12 +15,38 @@ class HomeAssistantWebSocketProvider(LocationProvider):
         self.ws_url = ws_url
         self.access_token = access_token
         self.normalizer = HomeAssistantEventNormalizer()
+        self._connection = None
 
     async def connect(self) -> None:
-        """Placeholder for the future websocket handshake."""
+        self._connection = await websockets.connect(self.ws_url)
+        auth_required = json.loads(await self._connection.recv())
+        if auth_required.get("type") != "auth_required":
+            raise RuntimeError("Home Assistant websocket did not request authentication.")
+        await self._connection.send(
+            json.dumps({"type": "auth", "access_token": self.access_token}),
+        )
+        auth_result = json.loads(await self._connection.recv())
+        if auth_result.get("type") != "auth_ok":
+            raise RuntimeError(f"Home Assistant websocket auth failed: {auth_result}")
+        await self._connection.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "state_changed"}))
+        subscribe_result = json.loads(await self._connection.recv())
+        if not subscribe_result.get("success"):
+            raise RuntimeError(f"Home Assistant websocket subscription failed: {subscribe_result}")
 
     async def close(self) -> None:
-        """Placeholder for connection teardown."""
+        if self._connection is not None:
+            await self._connection.close()
+            self._connection = None
 
     async def listen(self) -> AsyncIterator[NormalizedLocationEvent]:
-        raise NotImplementedError("WebSocket streaming is part of the next milestone.")
+        if self._connection is None:
+            await self.connect()
+
+        assert self._connection is not None
+        async for message in self._connection:
+            payload = json.loads(message)
+            if payload.get("type") != "event":
+                continue
+            normalized = self.normalizer.normalize(payload)
+            if normalized is not None:
+                yield normalized
