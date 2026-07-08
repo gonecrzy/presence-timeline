@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID
 
 from sqlalchemy import Select, delete, select
@@ -151,3 +151,76 @@ class LocationRepository:
             .order_by(LocationPoint.observed_at.asc())
         )
         return list(self.db.scalars(stmt))
+
+    def list_points_for_member_on_date(self, member_id: UUID, start: datetime, end: datetime) -> list[LocationPoint]:
+        stmt: Select[tuple[LocationPoint]] = (
+            select(LocationPoint)
+            .where(LocationPoint.member_id == member_id)
+            .where(LocationPoint.observed_at >= start)
+            .where(LocationPoint.observed_at < end)
+            .order_by(LocationPoint.observed_at.asc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def replace_member_day_trips(self, member_id: UUID, trip_date: date, trips: list[dict]) -> list[Trip]:
+        day_start = datetime.combine(trip_date, time.min, tzinfo=UTC)
+        day_end = day_start + timedelta(days=1)
+        self.db.execute(
+            delete(Trip)
+            .where(Trip.member_id == member_id)
+            .where(Trip.started_at >= day_start)
+            .where(Trip.started_at < day_end),
+        )
+        stored = []
+        for trip in trips:
+            row = Trip(
+                member_id=member_id,
+                started_at=trip["started_at"],
+                ended_at=trip["ended_at"],
+                point_count=trip["point_count"],
+                distance_m=trip["distance_m"],
+                start_label=trip.get("start_label"),
+                end_label=trip.get("end_label"),
+            )
+            self.db.add(row)
+            stored.append(row)
+        self.db.flush()
+        return stored
+
+    def list_trips_for_member_on_date(self, member_id: UUID, trip_date: date) -> list[Trip]:
+        day_start = datetime.combine(trip_date, time.min, tzinfo=UTC)
+        day_end = day_start + timedelta(days=1)
+        stmt: Select[tuple[Trip]] = (
+            select(Trip)
+            .where(Trip.member_id == member_id)
+            .where(Trip.started_at >= day_start)
+            .where(Trip.started_at < day_end)
+            .order_by(Trip.started_at.asc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def replace_daily_summary(self, member_id: UUID, summary: dict) -> DailySummary:
+        self.db.execute(
+            delete(DailySummary)
+            .where(DailySummary.member_id == member_id)
+            .where(DailySummary.summary_date == summary["summary_date"]),
+        )
+        row = DailySummary(
+            member_id=member_id,
+            summary_date=summary["summary_date"],
+            first_seen_at=summary["first_seen_at"],
+            last_seen_at=summary["last_seen_at"],
+            trip_count=summary["trip_count"],
+            total_distance_m=summary["total_distance_m"],
+        )
+        self.db.add(row)
+        self.db.flush()
+        return row
+
+    def get_daily_summary_for_member(self, member_id: UUID, summary_date: date) -> DailySummary | None:
+        stmt: Select[tuple[DailySummary]] = (
+            select(DailySummary)
+            .where(DailySummary.member_id == member_id)
+            .where(DailySummary.summary_date == summary_date)
+        )
+        return self.db.scalar(stmt)
