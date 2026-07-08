@@ -30,6 +30,7 @@ Build a private, self-hosted family location platform where parents can answer:
 - `Member`
 - `Device`
 - `LocationPoint`
+- `Place`
 - `Trip`
 - `DailySummary`
 - `SafetyEvent`
@@ -54,9 +55,15 @@ These tables are provider-agnostic and represent backend-owned truth after norma
 
 - PostgreSQL + PostGIS
 - Raw points stored with timestamps, source/provider metadata, battery, and spatial fields
-- Derived trips and daily summaries stored separately from raw history
+- Derived trips, daily summaries, and geofence safety events stored separately from raw history
 - Retention controlled by `GPSTRACK_RETENTION_DAYS`, default `7`
 - Schema evolution is managed through Alembic migrations, not ORM `create_all`
+
+### Safety and places
+
+- Family-defined circular places provide the first place model.
+- Places marked as `is_safe_zone` drive `safe_zone_entered` and `safe_zone_exited` derived events.
+- Safety derivation currently runs from stored point history rather than a complex rules engine.
 
 ## First milestone
 
@@ -71,6 +78,5 @@ This foundation milestone intentionally stops at:
 It does not yet include:
 
 - real authentication enforcement
-- computed trip pipeline
 - public timeline/playback endpoints
 - mobile client

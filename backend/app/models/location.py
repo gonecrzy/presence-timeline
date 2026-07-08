@@ -65,10 +65,17 @@ class SafetyEvent(TimestampMixin, Base):
         ForeignKey("members.id", ondelete="CASCADE"),
         nullable=False,
     )
+    place_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("places.id", ondelete="SET NULL"),
+    )
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     severity: Mapped[str] = mapped_column(String(32), nullable=False, default="info")
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
+    place: Mapped["Place | None"] = relationship(back_populates="safety_events")
+
 
 from app.models.family import Device, Member  # noqa: E402
+from app.models.place import Place  # noqa: E402

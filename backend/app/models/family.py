@@ -16,6 +16,7 @@ class Family(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
 
     members: Mapped[list["Member"]] = relationship(back_populates="family")
+    places: Mapped[list["Place"]] = relationship(back_populates="family")
 
 
 class Member(TimestampMixin, Base):
@@ -57,4 +58,5 @@ class Device(TimestampMixin, Base):
 
 
 from app.models.location import LocationPoint  # noqa: E402
+from app.models.place import Place  # noqa: E402
 from app.models.trip import Trip  # noqa: E402

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.family import Device, Family, Member
 from app.models.location import DailySummary, LocationPoint, SafetyEvent
+from app.models.place import Place
 from app.models.trip import Trip
 
 
@@ -63,6 +64,27 @@ class LocationRepository:
         )
         return list(self.db.scalars(stmt))
 
+    def get_member(self, member_id: UUID) -> Member | None:
+        stmt: Select[tuple[Member]] = select(Member).where(Member.id == member_id)
+        return self.db.scalar(stmt)
+
+    def list_places_for_family_slug(self, family_slug: str) -> list[Place]:
+        stmt: Select[tuple[Place]] = (
+            select(Place)
+            .join(Family, Place.family_id == Family.id)
+            .where(Family.slug == family_slug)
+            .order_by(Place.name.asc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def list_places_for_family_id(self, family_id: UUID) -> list[Place]:
+        stmt: Select[tuple[Place]] = (
+            select(Place)
+            .where(Place.family_id == family_id)
+            .order_by(Place.name.asc())
+        )
+        return list(self.db.scalars(stmt))
+
     def resolve_member_by_source_entity(self, source_entity_id: str) -> Member | None:
         stmt: Select[tuple[Member]] = (
             select(Member)
@@ -106,6 +128,47 @@ class LocationRepository:
             delete(SafetyEvent).where(SafetyEvent.observed_at < cutoff),
         )
         return int(result.rowcount or 0)
+
+    def replace_safety_events_for_range(
+        self,
+        member_id: UUID,
+        start: datetime,
+        end: datetime,
+        events: list[dict],
+    ) -> None:
+        self.db.execute(
+            delete(SafetyEvent)
+            .where(SafetyEvent.member_id == member_id)
+            .where(SafetyEvent.observed_at >= start)
+            .where(SafetyEvent.observed_at <= end),
+        )
+        for event in events:
+            self.db.add(
+                SafetyEvent(
+                    member_id=member_id,
+                    place_id=event.get("place_id"),
+                    event_type=event["event_type"],
+                    severity=event["severity"],
+                    observed_at=event["observed_at"],
+                    payload=event["payload"],
+                )
+            )
+        self.db.flush()
+
+    def list_safety_events_for_range(
+        self,
+        member_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[SafetyEvent]:
+        stmt: Select[tuple[SafetyEvent]] = (
+            select(SafetyEvent)
+            .where(SafetyEvent.member_id == member_id)
+            .where(SafetyEvent.observed_at >= start)
+            .where(SafetyEvent.observed_at <= end)
+            .order_by(SafetyEvent.observed_at.asc())
+        )
+        return list(self.db.scalars(stmt))
 
     def delete_daily_summaries_older_than(self, cutoff: datetime) -> int:
         result = self.db.execute(

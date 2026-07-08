@@ -8,8 +8,10 @@ from app.core.auth import AppPrincipal, require_app_access
 from app.core.database import get_db
 from app.schemas.location import LocationHistoryResponse, LocationPointResponse
 from app.schemas.member import MemberListResponse
+from app.schemas.safety import SafetyEventListResponse
 from app.schemas.trip import DailySummaryResponse, TripListResponse
 from app.services.member_views import MemberViewService
+from app.services.safety_views import SafetyViewService
 from app.services.trip_views import TripViewService
 
 router = APIRouter()
@@ -21,6 +23,10 @@ def get_member_view_service(db=Depends(get_db)) -> MemberViewService:
 
 def get_trip_view_service(db=Depends(get_db)) -> TripViewService:
     return TripViewService(db)
+
+
+def get_safety_view_service(db=Depends(get_db)) -> SafetyViewService:
+    return SafetyViewService(db)
 
 
 @router.get("")
@@ -83,3 +89,15 @@ def get_member_daily_summary(
     if summary is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Daily summary not found.")
     return DailySummaryResponse.model_validate(summary)
+
+
+@router.get("/{member_id}/safety-events")
+def get_member_safety_events(
+    member_id: UUID,
+    *,
+    _: Annotated[AppPrincipal, Depends(require_app_access)],
+    service: Annotated[SafetyViewService, Depends(get_safety_view_service)],
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+) -> SafetyEventListResponse:
+    return SafetyEventListResponse(items=service.events(member_id, start, end))

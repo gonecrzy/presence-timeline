@@ -10,6 +10,7 @@ def test_metadata_contains_core_tables() -> None:
         "members",
         "devices",
         "location_points",
+        "places",
         "trips",
         "daily_summaries",
         "safety_events",

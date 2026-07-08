@@ -48,12 +48,13 @@ This first milestone provides:
 - Home Assistant event normalizer boundary
 - Config-driven Home Assistant member bootstrap and ingestion worker
 - Retention cleanup worker for expiring stored history
+- Family places and geofence-derived safety events
+- Derived trips and daily summaries from raw point history
 - Docker Compose runtime for API + PostGIS
 
 Not implemented yet:
 
 - Real family login flow
-- Trip computation jobs
 - Home Assistant dashboard publishing
 - Android app
 
