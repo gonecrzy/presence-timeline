@@ -21,8 +21,15 @@ class MemberResponse(BaseModel):
     devices: list[DeviceResponse] = Field(default_factory=list)
 
 
-class DeviceIgnoreUpdateRequest(BaseModel):
-    ignored: bool
+class DeviceUpdateRequest(BaseModel):
+    label: str | None = None
+    ignored: bool | None = None
+
+
+class MemberUpdateRequest(BaseModel):
+    display_name: str | None = None
+    is_child: bool | None = None
+    avatar_color: str | None = None
 
 
 class MemberListResponse(BaseModel):

@@ -15,3 +15,12 @@ class PlaceResponse(BaseModel):
 
 class PlaceListResponse(BaseModel):
     items: list[PlaceResponse]
+
+
+class PlaceUpsertRequest(BaseModel):
+    name: str
+    place_type: str | None = None
+    latitude: float
+    longitude: float
+    radius_m: float
+    is_safe_zone: bool

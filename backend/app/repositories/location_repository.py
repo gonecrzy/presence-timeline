@@ -68,6 +68,15 @@ class LocationRepository:
         stmt: Select[tuple[Member]] = select(Member).where(Member.id == member_id)
         return self.db.scalar(stmt)
 
+    def get_member_for_family_slug(self, family_slug: str, member_id: UUID) -> Member | None:
+        stmt: Select[tuple[Member]] = (
+            select(Member)
+            .join(Family, Member.family_id == Family.id)
+            .where(Family.slug == family_slug)
+            .where(Member.id == member_id)
+        )
+        return self.db.scalar(stmt)
+
     def list_places_for_family_slug(self, family_slug: str) -> list[Place]:
         stmt: Select[tuple[Place]] = (
             select(Place)
@@ -85,6 +94,71 @@ class LocationRepository:
         )
         return list(self.db.scalars(stmt))
 
+    def create_place(
+        self,
+        family_id: UUID,
+        *,
+        name: str,
+        place_type: str | None,
+        latitude: float,
+        longitude: float,
+        radius_m: float,
+        is_safe_zone: bool,
+    ) -> Place:
+        place = Place(
+            family_id=family_id,
+            name=name,
+            place_type=place_type,
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=radius_m,
+            is_safe_zone=is_safe_zone,
+        )
+        self.db.add(place)
+        self.db.flush()
+        return place
+
+    def get_place_for_family_slug(self, family_slug: str, place_id: UUID) -> Place | None:
+        stmt: Select[tuple[Place]] = (
+            select(Place)
+            .join(Family, Place.family_id == Family.id)
+            .where(Family.slug == family_slug)
+            .where(Place.id == place_id)
+        )
+        return self.db.scalar(stmt)
+
+    def update_place_for_family_slug(
+        self,
+        family_slug: str,
+        place_id: UUID,
+        *,
+        name: str,
+        place_type: str | None,
+        latitude: float,
+        longitude: float,
+        radius_m: float,
+        is_safe_zone: bool,
+    ) -> Place | None:
+        place = self.get_place_for_family_slug(family_slug, place_id)
+        if place is None:
+            return None
+        place.name = name
+        place.place_type = place_type
+        place.latitude = latitude
+        place.longitude = longitude
+        place.radius_m = radius_m
+        place.is_safe_zone = is_safe_zone
+        self.db.flush()
+        return place
+
+    def delete_place_for_family_slug(self, family_slug: str, place_id: UUID) -> bool:
+        place = self.get_place_for_family_slug(family_slug, place_id)
+        if place is None:
+            return False
+        self.db.delete(place)
+        self.db.flush()
+        return True
+
     def resolve_member_by_source_entity(self, source_entity_id: str) -> Member | None:
         stmt: Select[tuple[Member]] = (
             select(Member)
@@ -101,6 +175,22 @@ class LocationRepository:
         stmt: Select[tuple[Device]] = (
             select(Device)
             .where(Device.member_id == member_id)
+            .where(Device.id == device_id)
+        )
+        return self.db.scalar(stmt)
+
+    def get_device_for_family_slug(
+        self,
+        family_slug: str,
+        member_id: UUID,
+        device_id: UUID,
+    ) -> Device | None:
+        stmt: Select[tuple[Device]] = (
+            select(Device)
+            .join(Member, Device.member_id == Member.id)
+            .join(Family, Member.family_id == Family.id)
+            .where(Family.slug == family_slug)
+            .where(Member.id == member_id)
             .where(Device.id == device_id)
         )
         return self.db.scalar(stmt)
@@ -134,6 +224,46 @@ class LocationRepository:
         if device is None:
             return None
         device.ignored = ignored
+        self.db.flush()
+        return device
+
+    def update_member_for_family_slug(
+        self,
+        family_slug: str,
+        member_id: UUID,
+        *,
+        display_name: str | None,
+        is_child: bool | None,
+        avatar_color: str | None,
+    ) -> Member | None:
+        member = self.get_member_for_family_slug(family_slug, member_id)
+        if member is None:
+            return None
+        if display_name is not None:
+            member.display_name = display_name
+        if is_child is not None:
+            member.is_child = is_child
+        if avatar_color is not None:
+            member.avatar_color = avatar_color
+        self.db.flush()
+        return member
+
+    def update_device_for_family_slug(
+        self,
+        family_slug: str,
+        member_id: UUID,
+        device_id: UUID,
+        *,
+        label: str | None,
+        ignored: bool | None,
+    ) -> Device | None:
+        device = self.get_device_for_family_slug(family_slug, member_id, device_id)
+        if device is None:
+            return None
+        if label is not None:
+            device.label = label
+        if ignored is not None:
+            device.ignored = ignored
         self.db.flush()
         return device
 
@@ -284,6 +414,29 @@ class LocationRepository:
             .order_by(Trip.started_at.asc())
         )
         return list(self.db.scalars(stmt))
+
+    def list_trips_for_member_range(
+        self,
+        member_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Trip]:
+        stmt: Select[tuple[Trip]] = (
+            select(Trip)
+            .where(Trip.member_id == member_id)
+            .where(Trip.started_at >= start)
+            .where(Trip.started_at <= end)
+            .order_by(Trip.started_at.asc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def get_trip_for_member(self, member_id: UUID, trip_id: UUID) -> Trip | None:
+        stmt: Select[tuple[Trip]] = (
+            select(Trip)
+            .where(Trip.member_id == member_id)
+            .where(Trip.id == trip_id)
+        )
+        return self.db.scalar(stmt)
 
     def replace_daily_summary(self, member_id: UUID, summary: dict) -> DailySummary:
         self.db.execute(

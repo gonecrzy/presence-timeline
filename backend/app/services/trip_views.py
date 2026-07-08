@@ -38,3 +38,33 @@ class TripViewService:
             "trip_count": summary.trip_count,
             "total_distance_m": summary.total_distance_m,
         }
+
+    def trip_route(self, member_id: UUID, trip_id: UUID) -> dict | None:
+        trip = self.repository.get_trip_for_member(member_id, trip_id)
+        if trip is None:
+            return None
+        points = self.repository.list_member_history(
+            member_id,
+            trip.started_at,
+            trip.ended_at or trip.started_at,
+        )
+        return {
+            "id": trip.id,
+            "member_id": member_id,
+            "started_at": trip.started_at,
+            "ended_at": trip.ended_at,
+            "distance_m": trip.distance_m,
+            "point_count": trip.point_count,
+            "points": [
+                {
+                    "member_id": point.member_id,
+                    "observed_at": point.observed_at,
+                    "latitude": point.latitude,
+                    "longitude": point.longitude,
+                    "accuracy_m": point.accuracy_m,
+                    "battery_level": point.battery_level,
+                    "source_entity_id": point.source_entity_id,
+                }
+                for point in points
+            ],
+        }

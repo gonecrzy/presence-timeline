@@ -1,12 +1,16 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from app.repositories.location_repository import LocationRepository
+from app.services.safety import SafetyDerivationService
+from app.services.trip_derivation import TripDerivationService
 
 
 class MemberViewService:
     def __init__(self, db) -> None:
         self.repository = LocationRepository(db)
+        self.trip_derivation = TripDerivationService(self.repository)
+        self.safety_derivation = SafetyDerivationService()
 
     def list_members(self, family_slug: str) -> list[dict]:
         members = self.repository.list_members_for_family_slug(family_slug)
@@ -28,6 +32,48 @@ class MemberViewService:
         self.repository.commit()
         return _serialize_device(device)
 
+    def update_member(
+        self,
+        family_slug: str,
+        member_id: UUID,
+        *,
+        display_name: str | None,
+        is_child: bool | None,
+        avatar_color: str | None,
+    ) -> dict | None:
+        member = self.repository.update_member_for_family_slug(
+            family_slug,
+            member_id,
+            display_name=display_name,
+            is_child=is_child,
+            avatar_color=avatar_color,
+        )
+        if member is None:
+            return None
+        self.repository.commit()
+        return _serialize_member(member)
+
+    def update_device(
+        self,
+        family_slug: str,
+        member_id: UUID,
+        device_id: UUID,
+        *,
+        label: str | None,
+        ignored: bool | None,
+    ) -> dict | None:
+        device = self.repository.update_device_for_family_slug(
+            family_slug,
+            member_id,
+            device_id,
+            label=label,
+            ignored=ignored,
+        )
+        if device is None:
+            return None
+        self.repository.commit()
+        return _serialize_device(device)
+
     def latest_location(self, member_id: UUID) -> dict | None:
         point = self.repository.get_latest_point_for_member(member_id)
         if point is None:
@@ -37,6 +83,83 @@ class MemberViewService:
     def history(self, member_id: UUID, start: datetime, end: datetime) -> list[dict]:
         points = self.repository.list_member_history(member_id, start, end)
         return [_serialize_point(point) for point in points]
+
+    def timeline(self, member_id: UUID, start: datetime, end: datetime) -> list[dict]:
+        member = self.repository.get_member(member_id)
+        if member is None:
+            return []
+
+        for target_date in _dates_in_range(start.date(), end.date()):
+            self.trip_derivation.rebuild_member_day(member_id, target_date)
+
+        points = self.repository.list_member_history(member_id, start, end)
+        places = [
+            {
+                "id": place.id,
+                "name": place.name,
+                "latitude": place.latitude,
+                "longitude": place.longitude,
+                "radius_m": place.radius_m,
+                "is_safe_zone": place.is_safe_zone,
+            }
+            for place in self.repository.list_places_for_family_id(member.family_id)
+        ]
+        point_dicts = [
+            {
+                "member_id": point.member_id,
+                "observed_at": point.observed_at,
+                "latitude": point.latitude,
+                "longitude": point.longitude,
+            }
+            for point in points
+        ]
+        self.repository.replace_safety_events_for_range(
+            member_id,
+            start,
+            end,
+            self.safety_derivation.derive(points=point_dicts, places=places),
+        )
+        self.repository.commit()
+
+        items = []
+        for point in points:
+            items.append(
+                {
+                    "kind": "location_point",
+                    "observed_at": point.observed_at,
+                    "latitude": point.latitude,
+                    "longitude": point.longitude,
+                    "battery_level": point.battery_level,
+                    "source_entity_id": point.source_entity_id,
+                }
+            )
+        for event in self.repository.list_safety_events_for_range(member_id, start, end):
+            items.append(
+                {
+                    "kind": "safety_event",
+                    "observed_at": event.observed_at,
+                    "event_type": event.event_type,
+                    "severity": event.severity,
+                    "place_id": event.place_id,
+                    "payload": event.payload,
+                }
+            )
+        for trip in self.repository.list_trips_for_member_range(member_id, start, end):
+            items.append(
+                {
+                    "kind": "trip",
+                    "observed_at": trip.started_at,
+                    "trip_id": trip.id,
+                    "started_at": trip.started_at,
+                    "ended_at": trip.ended_at,
+                    "distance_m": trip.distance_m,
+                    "point_count": trip.point_count,
+                    "start_label": trip.start_label,
+                    "end_label": trip.end_label,
+                }
+            )
+
+        return sorted(items, key=lambda item: item["observed_at"])
 
 
 def _serialize_point(point) -> dict:
@@ -60,3 +183,22 @@ def _serialize_device(device) -> dict:
         "ignored": device.ignored,
         "last_seen_at": device.last_seen_at,
     }
+
+
+def _serialize_member(member) -> dict:
+    return {
+        "id": member.id,
+        "display_name": member.display_name,
+        "is_child": member.is_child,
+        "last_seen_at": member.last_seen_at,
+        "devices": [_serialize_device(device) for device in member.devices],
+    }
+
+
+def _dates_in_range(start_date: date, end_date: date) -> list[date]:
+    current = start_date
+    dates = []
+    while current <= end_date:
+        dates.append(current)
+        current += timedelta(days=1)
+    return dates
