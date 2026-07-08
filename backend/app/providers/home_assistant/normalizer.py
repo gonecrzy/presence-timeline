@@ -12,8 +12,27 @@ class HomeAssistantEventNormalizer:
             return None
 
         new_state = payload.get("event", {}).get("data", {}).get("new_state") or {}
-        entity_id = new_state.get("entity_id", "")
-        attributes = new_state.get("attributes") or {}
+        observed_at = new_state.get("last_updated") or payload.get("event", {}).get("time_fired")
+        if not observed_at:
+            return None
+
+        return self.normalize_state(
+            {
+                "entity_id": new_state.get("entity_id", ""),
+                "attributes": new_state.get("attributes") or {},
+                "last_updated": observed_at,
+            },
+            raw_payload=payload,
+        )
+
+    def normalize_state(
+        self,
+        state: dict[str, Any],
+        *,
+        raw_payload: dict[str, Any] | None = None,
+    ) -> NormalizedLocationEvent | None:
+        entity_id = state.get("entity_id", "")
+        attributes = state.get("attributes") or {}
 
         if not entity_id.startswith("device_tracker."):
             return None
@@ -23,7 +42,7 @@ class HomeAssistantEventNormalizer:
         if latitude is None or longitude is None:
             return None
 
-        observed_at = new_state.get("last_updated") or payload.get("event", {}).get("time_fired")
+        observed_at = state.get("last_updated")
         if not observed_at:
             return None
 
@@ -40,7 +59,7 @@ class HomeAssistantEventNormalizer:
             battery_level=_coerce_int(attributes.get("battery_level")),
             is_charging=_coerce_bool(attributes.get("battery_charging")),
             speed_mps=_coerce_float(attributes.get("speed")),
-            raw_payload=payload,
+            raw_payload=raw_payload or state,
         )
 
 

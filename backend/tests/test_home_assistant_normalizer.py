@@ -56,3 +56,27 @@ def test_normalizer_ignores_non_tracker_events() -> None:
     }
 
     assert HomeAssistantEventNormalizer().normalize(payload) is None
+
+
+def test_normalizer_extracts_location_from_state_snapshot() -> None:
+    state = {
+        "entity_id": "device_tracker.pixel_10_pro",
+        "last_updated": "2026-07-08T20:59:40Z",
+        "attributes": {
+            "friendly_name": "Kristi",
+            "latitude": 37.4219999,
+            "longitude": -122.0840575,
+            "gps_accuracy": 12,
+            "battery_level": 76,
+            "battery_charging": True,
+            "speed": 0.4,
+        },
+    }
+
+    event = HomeAssistantEventNormalizer().normalize_state(state)
+
+    assert event is not None
+    assert event.provider == ProviderName.HOME_ASSISTANT
+    assert event.source_entity_id == "device_tracker.pixel_10_pro"
+    assert event.source_device_name == "Kristi"
+    assert event.observed_at.tzinfo == timezone.utc

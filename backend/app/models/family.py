@@ -51,6 +51,7 @@ class Device(TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     external_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     label: Mapped[str | None] = mapped_column(String(255))
+    ignored: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     member: Mapped[Member] = relationship(back_populates="devices")

@@ -7,6 +7,7 @@ from app.services.locations import LocationService
 
 class FakeLocationRepository:
     def __init__(self) -> None:
+        self.family = None
         self.members = {}
         self.devices = {}
         self.points = []
@@ -14,15 +15,44 @@ class FakeLocationRepository:
     def resolve_member_by_source_entity(self, source_entity_id: str):
         return self.members.get(source_entity_id)
 
-    def upsert_device_for_member(self, member, provider: str, external_id: str, label: str | None):
+    def get_device_by_external_id(self, external_id: str):
+        return self.devices.get(external_id)
+
+    def ensure_family(self, family_slug: str, family_name: str):
+        self.family = {"id": "family-1", "slug": family_slug, "name": family_name}
+        return self.family
+
+    def ensure_member(self, family, display_name: str, is_child: bool, avatar_color: str | None):
+        member = self.members.get(display_name)
+        if member is None:
+            member = {
+                "id": uuid4(),
+                "family": family,
+                "display_name": display_name,
+                "is_child": is_child,
+                "avatar_color": avatar_color,
+            }
+            self.members[display_name] = member
+        return member
+
+    def upsert_device_for_member(
+        self,
+        member,
+        provider: str,
+        external_id: str,
+        label: str | None,
+        ignored: bool | None = None,
+    ):
         device = {
             "id": external_id,
             "member_id": member["id"],
             "provider": provider,
             "external_id": external_id,
             "label": label,
+            "ignored": ignored if ignored is not None else False,
         }
         self.devices[external_id] = device
+        self.members[external_id] = member
         return device
 
     def add_location_point(self, point):
@@ -78,6 +108,61 @@ def test_ingest_location_event_ignores_unknown_member_mapping() -> None:
         source_entity_id="device_tracker.unknown_phone",
         source_device_id="unknown-device",
         source_device_name="Unknown",
+        observed_at=datetime(2026, 7, 8, 21, 0, tzinfo=UTC),
+        latitude=37.42,
+        longitude=-122.08,
+    )
+
+    assert service.ingest(event) is None
+    assert repository.points == []
+
+
+def test_ingest_location_event_auto_discovers_unknown_member() -> None:
+    repository = FakeLocationRepository()
+    service = LocationService(
+        repository,
+        auto_discovery_family_slug="family-alpha",
+        auto_discovery_family_name="Family Alpha",
+    )
+
+    event = NormalizedLocationEvent(
+        provider=ProviderName.HOME_ASSISTANT,
+        source_entity_id="device_tracker.pixel_10_pro",
+        source_device_name="Kristi",
+        observed_at=datetime(2026, 7, 8, 21, 0, tzinfo=UTC),
+        latitude=37.42,
+        longitude=-122.08,
+    )
+
+    stored = service.ingest(event)
+
+    assert stored is not None
+    assert repository.family == {
+        "id": "family-1",
+        "slug": "family-alpha",
+        "name": "Family Alpha",
+    }
+    assert repository.devices["device_tracker.pixel_10_pro"]["label"] == "Kristi"
+    assert repository.points[0].source_entity_id == "device_tracker.pixel_10_pro"
+
+
+def test_ingest_location_event_skips_ignored_device() -> None:
+    repository = FakeLocationRepository()
+    member_id = uuid4()
+    repository.members["device_tracker.sam_phone"] = {"id": member_id, "display_name": "Sam"}
+    repository.devices["device_tracker.sam_phone"] = {
+        "id": "device_tracker.sam_phone",
+        "member_id": member_id,
+        "provider": "home_assistant",
+        "external_id": "device_tracker.sam_phone",
+        "label": "Sam Phone",
+        "ignored": True,
+    }
+    service = LocationService(repository)
+
+    event = NormalizedLocationEvent(
+        provider=ProviderName.HOME_ASSISTANT,
+        source_entity_id="device_tracker.sam_phone",
         observed_at=datetime(2026, 7, 8, 21, 0, tzinfo=UTC),
         latitude=37.42,
         longitude=-122.08,

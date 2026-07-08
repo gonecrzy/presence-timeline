@@ -7,6 +7,10 @@ from app.domain.events import NormalizedLocationEvent
 class LocationProvider(ABC):
     name: str
 
+    async def snapshot(self) -> list[NormalizedLocationEvent]:
+        """Return current provider state when available."""
+        return []
+
     @abstractmethod
     async def connect(self) -> None:
         """Open any provider-side resources."""

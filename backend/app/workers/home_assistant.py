@@ -30,11 +30,31 @@ async def run() -> None:
         access_token=settings.home_assistant_access_token,
     )
 
+    db = SessionLocal()
+    try:
+        repository = LocationRepository(db)
+        location_service = LocationService(
+            repository,
+            auto_discovery_family_slug=settings.open_auth_family_slug,
+            auto_discovery_family_name=settings.default_family_name,
+        )
+        for event in await provider.snapshot():
+            location_service.ingest(event)
+    finally:
+        db.close()
+
     while True:
         db = SessionLocal()
         try:
             repository = LocationRepository(db)
-            runner = HomeAssistantIngestionRunner(provider, LocationService(repository))
+            runner = HomeAssistantIngestionRunner(
+                provider,
+                LocationService(
+                    repository,
+                    auto_discovery_family_slug=settings.open_auth_family_slug,
+                    auto_discovery_family_name=settings.default_family_name,
+                ),
+            )
             await runner.run()
         finally:
             db.close()

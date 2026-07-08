@@ -7,27 +7,41 @@ from app.repositories.location_repository import LocationRepository
 
 
 class LocationService:
-    def __init__(self, repository: LocationRepository) -> None:
+    def __init__(
+        self,
+        repository: LocationRepository,
+        auto_discovery_family_slug: str | None = None,
+        auto_discovery_family_name: str | None = None,
+    ) -> None:
         self.repository = repository
+        self.auto_discovery_family_slug = auto_discovery_family_slug
+        self.auto_discovery_family_name = auto_discovery_family_name
 
     def ingest(
         self,
         event: NormalizedLocationEvent,
         received_at: datetime | None = None,
     ) -> LocationPoint | dict | None:
-        member = self.repository.resolve_member_by_source_entity(event.source_entity_id)
-        if member is None:
+        device = self.repository.get_device_by_external_id(event.source_entity_id)
+        if _is_ignored(device):
             return None
 
-        device = None
+        member = self.repository.resolve_member_by_source_entity(event.source_entity_id)
+        if member is None:
+            member, device = self._auto_discover_member_device(event)
+            if member is None:
+                return None
+
         device_external_id = event.source_entity_id
-        if device_external_id:
+        if device is None and device_external_id:
             device = self.repository.upsert_device_for_member(
                 member=member,
                 provider=event.provider.value,
                 external_id=device_external_id,
                 label=event.source_device_name,
             )
+        if _is_ignored(device):
+            return None
 
         received_at = received_at or datetime.now(UTC)
         if hasattr(member, "last_seen_at"):
@@ -59,3 +73,43 @@ class LocationService:
 
     def get_history(self, member_id: UUID, start: datetime, end: datetime):
         return self.repository.list_member_history(member_id, start, end)
+
+    def _auto_discover_member_device(
+        self,
+        event: NormalizedLocationEvent,
+    ):
+        if not self.auto_discovery_family_slug or not self.auto_discovery_family_name:
+            return None, None
+
+        family = self.repository.ensure_family(
+            family_slug=self.auto_discovery_family_slug,
+            family_name=self.auto_discovery_family_name,
+        )
+        display_name = event.source_device_name or _display_name_from_entity_id(event.source_entity_id)
+        member = self.repository.ensure_member(
+            family=family,
+            display_name=display_name,
+            is_child=False,
+            avatar_color=None,
+        )
+        device = self.repository.upsert_device_for_member(
+            member=member,
+            provider=event.provider.value,
+            external_id=event.source_entity_id,
+            label=event.source_device_name or display_name,
+            ignored=False,
+        )
+        return member, device
+
+
+def _display_name_from_entity_id(entity_id: str) -> str:
+    slug = entity_id.split(".", 1)[-1]
+    return slug.replace("_", " ").replace("-", " ").title()
+
+
+def _is_ignored(device) -> bool:
+    if device is None:
+        return False
+    if isinstance(device, dict):
+        return bool(device.get("ignored", False))
+    return bool(getattr(device, "ignored", False))

@@ -93,12 +93,25 @@ class LocationRepository:
         )
         return self.db.scalar(stmt)
 
+    def get_device_by_external_id(self, external_id: str) -> Device | None:
+        stmt: Select[tuple[Device]] = select(Device).where(Device.external_id == external_id)
+        return self.db.scalar(stmt)
+
+    def get_device_for_member(self, member_id: UUID, device_id: UUID) -> Device | None:
+        stmt: Select[tuple[Device]] = (
+            select(Device)
+            .where(Device.member_id == member_id)
+            .where(Device.id == device_id)
+        )
+        return self.db.scalar(stmt)
+
     def upsert_device_for_member(
         self,
         member: Member,
         provider: str,
         external_id: str,
         label: str | None,
+        ignored: bool | None = None,
     ) -> Device:
         stmt: Select[tuple[Device]] = select(Device).where(Device.external_id == external_id)
         device = self.db.scalar(stmt)
@@ -111,7 +124,17 @@ class LocationRepository:
             self.db.add(device)
 
         device.label = label
+        if ignored is not None:
+            device.ignored = ignored
         device.last_seen_at = member.last_seen_at
+        return device
+
+    def set_device_ignored(self, member_id: UUID, device_id: UUID, ignored: bool) -> Device | None:
+        device = self.get_device_for_member(member_id, device_id)
+        if device is None:
+            return None
+        device.ignored = ignored
+        self.db.flush()
         return device
 
     def commit(self) -> None:

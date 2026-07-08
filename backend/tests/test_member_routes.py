@@ -13,6 +13,7 @@ client = TestClient(app)
 class StubMemberViews:
     def __init__(self) -> None:
         self.member_id = uuid4()
+        self.device_id = uuid4()
 
     def list_members(self, family_slug: str):
         assert family_slug == "dev-family"
@@ -22,6 +23,16 @@ class StubMemberViews:
                 "display_name": "Sam",
                 "is_child": True,
                 "last_seen_at": "2026-07-08T21:00:00Z",
+                "devices": [
+                    {
+                        "id": str(self.device_id),
+                        "provider": "home_assistant",
+                        "external_id": "device_tracker.sam_phone",
+                        "label": "Sam Phone",
+                        "ignored": False,
+                        "last_seen_at": "2026-07-08T21:00:00Z",
+                    }
+                ],
             }
         ]
 
@@ -49,6 +60,18 @@ class StubMemberViews:
             }
         ]
 
+    def set_device_ignored(self, member_id, device_id, ignored: bool):
+        assert member_id == self.member_id
+        assert device_id == self.device_id
+        return {
+            "id": str(device_id),
+            "provider": "home_assistant",
+            "external_id": "device_tracker.sam_phone",
+            "label": "Sam Phone",
+            "ignored": ignored,
+            "last_seen_at": "2026-07-08T21:00:00Z",
+        }
+
 
 def test_member_routes_return_real_shapes() -> None:
     stub = StubMemberViews()
@@ -60,12 +83,19 @@ def test_member_routes_return_real_shapes() -> None:
             f"/api/v1/members/{stub.member_id}/history",
             params={"start": "2026-07-08T20:00:00Z", "end": "2026-07-08T22:00:00Z"},
         )
+        device = client.patch(
+            f"/api/v1/members/{stub.member_id}/devices/{stub.device_id}",
+            json={"ignored": True},
+        )
 
         assert members.status_code == 200
         assert members.json()["items"][0]["display_name"] == "Sam"
+        assert members.json()["items"][0]["devices"][0]["external_id"] == "device_tracker.sam_phone"
         assert latest.status_code == 200
         assert latest.json()["member_id"] == str(stub.member_id)
         assert history.status_code == 200
         assert len(history.json()["items"]) == 1
+        assert device.status_code == 200
+        assert device.json()["ignored"] is True
     finally:
         app.dependency_overrides.clear()

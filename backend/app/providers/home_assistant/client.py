@@ -1,5 +1,7 @@
+import asyncio
 from collections.abc import AsyncIterator
 import json
+from urllib import request
 
 import websockets
 
@@ -16,6 +18,9 @@ class HomeAssistantWebSocketProvider(LocationProvider):
         self.access_token = access_token
         self.normalizer = HomeAssistantEventNormalizer()
         self._connection = None
+
+    async def snapshot(self) -> list[NormalizedLocationEvent]:
+        return await asyncio.to_thread(self._fetch_snapshot)
 
     async def connect(self) -> None:
         self._connection = await websockets.connect(self.ws_url)
@@ -50,3 +55,28 @@ class HomeAssistantWebSocketProvider(LocationProvider):
             normalized = self.normalizer.normalize(payload)
             if normalized is not None:
                 yield normalized
+
+    def _fetch_snapshot(self) -> list[NormalizedLocationEvent]:
+        req = request.Request(
+            self._states_url,
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        with request.urlopen(req, timeout=20) as response:
+            states = json.load(response)
+
+        events = []
+        for state in states:
+            normalized = self.normalizer.normalize_state(state)
+            if normalized is not None:
+                events.append(normalized)
+        return events
+
+    @property
+    def _states_url(self) -> str:
+        base_url = self.ws_url.replace("wss://", "https://").replace("ws://", "http://")
+        if base_url.endswith("/api/websocket"):
+            base_url = base_url[: -len("/api/websocket")]
+        return f"{base_url.rstrip('/')}/api/states"

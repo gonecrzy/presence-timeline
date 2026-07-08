@@ -16,9 +16,17 @@ class MemberViewService:
                 "display_name": member.display_name,
                 "is_child": member.is_child,
                 "last_seen_at": member.last_seen_at,
+                "devices": [_serialize_device(device) for device in member.devices],
             }
             for member in members
         ]
+
+    def set_device_ignored(self, member_id: UUID, device_id: UUID, ignored: bool) -> dict | None:
+        device = self.repository.set_device_ignored(member_id, device_id, ignored)
+        if device is None:
+            return None
+        self.repository.commit()
+        return _serialize_device(device)
 
     def latest_location(self, member_id: UUID) -> dict | None:
         point = self.repository.get_latest_point_for_member(member_id)
@@ -40,4 +48,15 @@ def _serialize_point(point) -> dict:
         "accuracy_m": point.accuracy_m,
         "battery_level": point.battery_level,
         "source_entity_id": point.source_entity_id,
+    }
+
+
+def _serialize_device(device) -> dict:
+    return {
+        "id": device.id,
+        "provider": device.provider,
+        "external_id": device.external_id,
+        "label": device.label,
+        "ignored": device.ignored,
+        "last_seen_at": device.last_seen_at,
     }

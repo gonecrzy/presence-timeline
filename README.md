@@ -23,7 +23,7 @@ This repository currently contains the backend foundation:
 docker compose up --build
 ```
 
-3. The API will be available at `http://localhost:8000`.
+3. The API will be available at `http://localhost:${GPSTRACK_API_PORT:-8000}`.
 
 ## Backend verification
 
@@ -46,7 +46,7 @@ This first milestone provides:
 - Provider abstraction for pluggable location sources
 - Open-by-default auth seam that can switch to OAuth/OIDC later
 - Home Assistant event normalizer boundary
-- Config-driven Home Assistant member bootstrap and ingestion worker
+- Home Assistant snapshot + event ingestion worker with auto-discovered trackers
 - Retention cleanup worker for expiring stored history
 - Family places and geofence-derived safety events
 - Derived trips and daily summaries from raw point history
@@ -68,13 +68,14 @@ Planned future mode:
 - issuer and client configuration via `.env`
 - backend-issued family scoping derived from verified identity claims
 
-## Home Assistant bootstrap
+## Home Assistant discovery
 
-For live ingestion, seed the initial member-to-entity mapping with `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` as JSON in `.env`:
+For live ingestion, enable the worker and provide a Home Assistant websocket URL plus long-lived access token. On startup the worker imports current coordinate-bearing `device_tracker.*` states from `/api/states`, then stays subscribed to websocket `state_changed` events.
 
-```json
-[{"display_name":"Sam","entity_id":"device_tracker.sam_phone","is_child":true,"device_label":"Sam Phone"}]
-```
+Optional overrides:
+
+- `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can still pre-seed known metadata such as child/parent classification.
+- Discovered devices can be hidden later through the member device ignore API instead of removing them from config.
 
 Then run the API and ingestion worker:
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auth import AppPrincipal, require_app_access
 from app.core.database import get_db
 from app.schemas.location import LocationHistoryResponse, LocationPointResponse
-from app.schemas.member import MemberListResponse
+from app.schemas.member import DeviceIgnoreUpdateRequest, DeviceResponse, MemberListResponse
 from app.schemas.safety import SafetyEventListResponse
 from app.schemas.trip import DailySummaryResponse, TripListResponse
 from app.services.member_views import MemberViewService
@@ -36,6 +36,21 @@ def list_members(
     service: Annotated[MemberViewService, Depends(get_member_view_service)],
 ) -> MemberListResponse:
     return MemberListResponse(items=service.list_members(principal.family_slug))
+
+
+@router.patch("/{member_id}/devices/{device_id}")
+def update_member_device(
+    member_id: UUID,
+    device_id: UUID,
+    payload: DeviceIgnoreUpdateRequest,
+    *,
+    _: Annotated[AppPrincipal, Depends(require_app_access)],
+    service: Annotated[MemberViewService, Depends(get_member_view_service)],
+) -> DeviceResponse:
+    device = service.set_device_ignored(member_id, device_id, payload.ignored)
+    if device is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member device not found.")
+    return DeviceResponse.model_validate(device)
 
 
 @router.get("/{member_id}/latest-location")

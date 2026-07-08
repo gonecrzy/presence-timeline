@@ -1,4 +1,5 @@
 from datetime import timezone
+import json
 
 import pytest
 
@@ -81,6 +82,56 @@ async def test_provider_listen_yields_normalized_state_changed_events(monkeypatc
     events = []
     async for event in provider.listen():
         events.append(event)
+
+    assert len(events) == 1
+    assert events[0].source_entity_id == "device_tracker.sam_phone"
+    assert events[0].observed_at.tzinfo == timezone.utc
+
+
+@pytest.mark.anyio
+async def test_provider_snapshot_fetches_current_tracker_states(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                [
+                    {
+                        "entity_id": "device_tracker.sam_phone",
+                        "last_updated": "2026-07-09T00:00:00Z",
+                        "attributes": {
+                            "friendly_name": "Sam Phone",
+                            "latitude": 37.42,
+                            "longitude": -122.08,
+                            "gps_accuracy": 9,
+                        },
+                    },
+                    {
+                        "entity_id": "sensor.kitchen_temperature",
+                        "last_updated": "2026-07-09T00:00:00Z",
+                        "attributes": {"state_class": "measurement"},
+                    },
+                ]
+            ).encode()
+
+    def fake_urlopen(req, timeout: int):
+        assert req.full_url == "https://ha.example.com/api/states"
+        assert req.headers["Authorization"] == "Bearer secret"
+        assert timeout == 20
+        return FakeResponse()
+
+    monkeypatch.setattr("app.providers.home_assistant.client.request.urlopen", fake_urlopen)
+
+    provider = HomeAssistantWebSocketProvider(
+        ws_url="wss://ha.example.com/api/websocket",
+        access_token="secret",
+    )
+
+    events = await provider.snapshot()
 
     assert len(events) == 1
     assert events[0].source_entity_id == "device_tracker.sam_phone"
