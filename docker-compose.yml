@@ -1,13 +1,12 @@
 services:
   db:
     image: postgis/postgis:16-3.4
-    container_name: gpstrack-db
     environment:
       POSTGRES_DB: gpstrack
       POSTGRES_USER: gpstrack
       POSTGRES_PASSWORD: gpstrack
     ports:
-      - "5432:5432"
+      - "${GPSTRACK_DB_PORT:-5432}:5432"
     volumes:
       - postgis_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,10 +15,22 @@ services:
       timeout: 5s
       retries: 5
 
+  migrator:
+    build:
+      context: ./backend
+    container_name: gpstrack-migrator
+    environment:
+      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: alembic upgrade head
+
   api:
     build:
       context: ./backend
-    container_name: gpstrack-api
     environment:
       GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
       GPSTRACK_APP_NAME: ${GPSTRACK_APP_NAME:-GpsTrack API}
@@ -31,6 +42,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     volumes:
@@ -40,7 +53,6 @@ services:
   ingestor:
     build:
       context: ./backend
-    container_name: gpstrack-ingestor
     environment:
       GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
       GPSTRACK_APP_NAME: ${GPSTRACK_APP_NAME:-GpsTrack API}
@@ -58,6 +70,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
     command: python -m app.workers.home_assistant

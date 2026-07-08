@@ -56,6 +56,7 @@ These tables are provider-agnostic and represent backend-owned truth after norma
 - Raw points stored with timestamps, source/provider metadata, battery, and spatial fields
 - Derived trips and daily summaries stored separately from raw history
 - Retention controlled by `GPSTRACK_RETENTION_DAYS`, default `7`
+- Schema evolution is managed through Alembic migrations, not ORM `create_all`
 
 ## First milestone
 

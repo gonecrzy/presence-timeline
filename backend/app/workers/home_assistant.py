@@ -1,7 +1,7 @@
 import asyncio
 
 from app.core.config import get_settings
-from app.core.database import SessionLocal, initialize_database
+from app.core.database import SessionLocal
 from app.providers.home_assistant import HomeAssistantWebSocketProvider
 from app.repositories.location_repository import LocationRepository
 from app.services.bootstrap import BootstrapService
@@ -13,9 +13,6 @@ async def run() -> None:
     settings = get_settings()
     if not settings.enable_home_assistant_ingestion:
         return
-
-    if settings.auto_create_tables:
-        initialize_database()
 
     db = SessionLocal()
     try:

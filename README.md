@@ -17,7 +17,7 @@ This repository currently contains the backend foundation:
 ## Local development
 
 1. Copy `.env.example` to `.env` if you want to override defaults.
-2. Start PostGIS and the API:
+2. Start PostGIS, run migrations, and boot the API:
 
 ```bash
 docker compose up --build
@@ -41,11 +41,13 @@ pytest
 This first milestone provides:
 
 - FastAPI app scaffold with health and member routes
+- Alembic-backed schema migration flow
 - SQLAlchemy/PostGIS domain model
 - Provider abstraction for pluggable location sources
 - Open-by-default auth seam that can switch to OAuth/OIDC later
 - Home Assistant event normalizer boundary
 - Config-driven Home Assistant member bootstrap and ingestion worker
+- Retention cleanup worker for expiring stored history
 - Docker Compose runtime for API + PostGIS
 
 Not implemented yet:
@@ -76,5 +78,18 @@ For live ingestion, seed the initial member-to-entity mapping with `GPSTRACK_HOM
 Then run the API and ingestion worker:
 
 ```bash
-docker compose up --build api ingestor db
+docker compose up --build
+```
+
+## Database lifecycle
+
+Schema changes now go through Alembic.
+
+Useful commands:
+
+```bash
+cd backend
+. .venv/bin/activate
+alembic upgrade head
+python -m app.workers.retention
 ```

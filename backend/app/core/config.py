@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     oidc_client_id: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
-    auto_create_tables: bool = True
     enable_home_assistant_ingestion: bool = False
     home_assistant_bootstrap_members: list[HomeAssistantBootstrapMember] = Field(default_factory=list)
     home_assistant_ws_url: str = "ws://homeassistant.local:8123/api/websocket"

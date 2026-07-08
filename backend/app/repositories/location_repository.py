@@ -1,11 +1,12 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.orm import Session
 
 from app.models.family import Device, Family, Member
-from app.models.location import LocationPoint
+from app.models.location import DailySummary, LocationPoint, SafetyEvent
+from app.models.trip import Trip
 
 
 class LocationRepository:
@@ -93,6 +94,33 @@ class LocationRepository:
 
     def commit(self) -> None:
         self.db.commit()
+
+    def delete_location_points_older_than(self, cutoff: datetime) -> int:
+        result = self.db.execute(
+            delete(LocationPoint).where(LocationPoint.observed_at < cutoff),
+        )
+        return int(result.rowcount or 0)
+
+    def delete_safety_events_older_than(self, cutoff: datetime) -> int:
+        result = self.db.execute(
+            delete(SafetyEvent).where(SafetyEvent.observed_at < cutoff),
+        )
+        return int(result.rowcount or 0)
+
+    def delete_daily_summaries_older_than(self, cutoff: datetime) -> int:
+        result = self.db.execute(
+            delete(DailySummary).where(DailySummary.summary_date < cutoff.date()),
+        )
+        return int(result.rowcount or 0)
+
+    def delete_trips_older_than(self, cutoff: datetime) -> int:
+        result = self.db.execute(
+            delete(Trip).where(
+                (Trip.ended_at.is_not(None) & (Trip.ended_at < cutoff))
+                | (Trip.ended_at.is_(None) & (Trip.started_at < cutoff))
+            ),
+        )
+        return int(result.rowcount or 0)
 
     def add_location_point(self, point: LocationPoint) -> LocationPoint:
         self.db.add(point)
