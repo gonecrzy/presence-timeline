@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: gpstrack-db
+    environment:
+      POSTGRES_DB: gpstrack
+      POSTGRES_USER: gpstrack
+      POSTGRES_PASSWORD: gpstrack
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gpstrack -d gpstrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+    container_name: gpstrack-api
+    environment:
+      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
+      GPSTRACK_APP_NAME: ${GPSTRACK_APP_NAME:-GpsTrack API}
+      GPSTRACK_APP_VERSION: ${GPSTRACK_APP_VERSION:-0.1.0}
+      GPSTRACK_API_V1_PREFIX: ${GPSTRACK_API_V1_PREFIX:-/api/v1}
+      GPSTRACK_RETENTION_DAYS: ${GPSTRACK_RETENTION_DAYS:-7}
+      GPSTRACK_HOME_ASSISTANT_WS_URL: ${GPSTRACK_HOME_ASSISTANT_WS_URL:-ws://homeassistant.local:8123/api/websocket}
+      GPSTRACK_HOME_ASSISTANT_ACCESS_TOKEN: ${GPSTRACK_HOME_ASSISTANT_ACCESS_TOKEN:-replace-me}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgis_data:
