@@ -45,14 +45,13 @@ def _append_stop(stops: list[DerivedStop], points: Sequence[object], minimum_dur
     if ended_at - started_at < minimum_duration:
         return
 
-    latitude = sum(point.latitude for point in points) / len(points)
-    longitude = sum(point.longitude for point in points) / len(points)
+    representative_point = points[-1]
     stops.append(
         DerivedStop(
             started_at=started_at,
             ended_at=ended_at,
-            latitude=latitude,
-            longitude=longitude,
+            latitude=representative_point.latitude,
+            longitude=representative_point.longitude,
             point_count=len(points),
         )
     )

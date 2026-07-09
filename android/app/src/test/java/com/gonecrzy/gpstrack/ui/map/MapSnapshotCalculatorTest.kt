@@ -82,6 +82,44 @@ class MapSnapshotCalculatorTest {
     }
 
     @Test
+    fun `display route collapses all-day dwell jitter to the current point`() {
+        val points = listOf(
+            point("2026-07-09T08:00:00Z", 33.03113, -80.13135, accuracyM = 11.0),
+            point("2026-07-09T08:30:00Z", 33.03117, -80.13131, accuracyM = 26.0),
+            point("2026-07-09T09:00:00Z", 33.03107, -80.13138, accuracyM = 17.0),
+            point("2026-07-09T09:30:00Z", 33.03114, -80.13134, accuracyM = 12.0),
+        )
+
+        val displayRoute = MapSnapshotCalculator.buildDisplayRoute(
+            points = points,
+            dwellRadiusMeters = 250.0,
+            minimumSegmentMeters = 25.0,
+        )
+
+        assertEquals(listOf("2026-07-09T09:30:00Z"), displayRoute.map(LocationPoint::observedAt))
+    }
+
+    @Test
+    fun `display route drops poor accuracy outliers before simplifying`() {
+        val points = listOf(
+            point("2026-07-09T08:00:00Z", 37.4000, -122.0800, accuracyM = 12.0),
+            point("2026-07-09T08:15:00Z", 37.4010, -122.0810, accuracyM = 98.0),
+            point("2026-07-09T08:30:00Z", 37.4020, -122.0820, accuracyM = 13.0),
+        )
+
+        val displayRoute = MapSnapshotCalculator.buildDisplayRoute(
+            points = points,
+            dwellRadiusMeters = 250.0,
+            minimumSegmentMeters = 25.0,
+        )
+
+        assertEquals(
+            listOf("2026-07-09T08:00:00Z", "2026-07-09T08:30:00Z"),
+            displayRoute.map(LocationPoint::observedAt),
+        )
+    }
+
+    @Test
     fun `auto zoom is capped for tight bounds`() {
         val zoom = MapSnapshotCalculator.clampAutoZoom(proposedZoom = 16.2, maximumAutoZoom = 13.0)
 
@@ -109,13 +147,18 @@ class MapSnapshotCalculatorTest {
         assertEquals("R", initials)
     }
 
-    private fun point(observedAt: String, latitude: Double, longitude: Double): LocationPoint {
+    private fun point(
+        observedAt: String,
+        latitude: Double,
+        longitude: Double,
+        accuracyM: Double? = null,
+    ): LocationPoint {
         return LocationPoint(
             memberId = "member-1",
             observedAt = observedAt,
             latitude = latitude,
             longitude = longitude,
-            accuracyM = null,
+            accuracyM = accuracyM,
             batteryLevel = null,
             sourceEntityId = null,
         )

@@ -59,7 +59,28 @@ class ReverseGeocoder:
         except httpx.HTTPError:
             return None
 
-        return response.json().get("display_name")
+        return format_reverse_geocode_label(response.json())
+
+
+def format_reverse_geocode_label(payload: dict) -> str | None:
+    address = payload.get("address") or {}
+    street_bits = [address.get("house_number"), address.get("road") or address.get("pedestrian")]
+    street = " ".join(bit for bit in street_bits if bit)
+
+    locality = (
+        address.get("suburb")
+        or address.get("neighbourhood")
+        or address.get("village")
+        or address.get("town")
+        or address.get("city")
+        or address.get("hamlet")
+    )
+    region = address.get("state")
+    postcode = address.get("postcode")
+
+    parts = [street or None, locality, " ".join(bit for bit in [region, postcode] if bit) or None]
+    label = ", ".join(part for part in parts if part)
+    return label or payload.get("display_name")
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

@@ -309,3 +309,55 @@ def test_member_view_service_derives_stops_with_place_first_then_reverse_geocode
     assert stops[1]["label"] == "500 Elm St, Springfield"
     assert stops[1]["duration_seconds"] == 12 * 60
     assert reverse_geocoder.calls == [(stops[1]["latitude"], stops[1]["longitude"])]
+
+
+def test_member_view_service_uses_representative_stop_point_for_reverse_geocode(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.places = []
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            latitude=37.4300,
+            longitude=-122.0900,
+            accuracy_m=18.0,
+            battery_level=82,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 6, tzinfo=UTC),
+            latitude=37.4310,
+            longitude=-122.0910,
+            accuracy_m=90.0,
+            battery_level=81,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4301,
+            longitude=-122.0901,
+            accuracy_m=10.0,
+            battery_level=80,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+    reverse_geocoder = FakeReverseGeocoder()
+    service.reverse_geocoder = reverse_geocoder
+
+    stops = service.stops(
+        repository.member.id,
+        datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+        datetime(2026, 7, 8, 22, 0, tzinfo=UTC),
+        dwell_radius_m=250.0,
+        minimum_duration=timedelta(minutes=10),
+    )
+
+    assert len(stops) == 1
+    assert reverse_geocoder.calls == [(37.4301, -122.0901)]
+    assert stops[0]["latitude"] == 37.4301
+    assert stops[0]["longitude"] == -122.0901
