@@ -219,13 +219,22 @@ private fun MapSurface(
         }
     }
 
-    DisposableEffect(lifecycleOwner, mapView, mapStyleUrl, onMarkerSelected) {
+    // Handle Map Style updates
+    LaunchedEffect(mapStyleUrl) {
+        mapView.getMapAsync { map ->
+            map.setMinZoomPreference(0.0)
+            if (map.style?.url != mapStyleUrl) {
+                map.setStyle(mapStyleUrl)
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, mapView) {
         mapView.getMapAsync { map ->
             map.setOnMarkerClickListener { marker ->
                 marker.snippet?.let(onMarkerSelected)
                 false
             }
-            map.setStyle(mapStyleUrl)
         }
 
         val observer = LifecycleEventObserver { _, event ->
@@ -306,8 +315,8 @@ private fun renderMap(
     when {
         pointCount == 0 -> {
             map.cameraPosition = CameraPosition.Builder()
-                .target(LatLng(37.42, -122.08))
-                .zoom(4.0)
+                .target(LatLng(20.0, 0.0))
+                .zoom(1.0)
                 .build()
         }
 
@@ -318,7 +327,7 @@ private fun renderMap(
             if (target != null) {
                 map.cameraPosition = CameraPosition.Builder()
                     .target(target)
-                    .zoom(14.0)
+                    .zoom(12.0)
                     .build()
             }
         }
@@ -327,7 +336,7 @@ private fun renderMap(
             runCatching {
                 map.getCameraForLatLngBounds(
                     boundsBuilder.build(),
-                    intArrayOf(96, 96, 96, 96),
+                    intArrayOf(128, 128, 128, 128),
                     0.0,
                     0.0,
                 )?.let { cameraPosition ->
