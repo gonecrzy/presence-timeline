@@ -2,7 +2,12 @@ from datetime import date
 from uuid import UUID
 
 from app.repositories.location_repository import LocationRepository
+from app.services.places import haversine_m
 from app.services.trip_derivation import TripDerivationService
+
+ROUTE_DWELL_RADIUS_M = 250.0
+ROUTE_MINIMUM_SEGMENT_M = 25.0
+ROUTE_MAXIMUM_DISPLAY_ACCURACY_M = 50.0
 
 
 class TripViewService:
@@ -48,13 +53,14 @@ class TripViewService:
             trip.started_at,
             trip.ended_at or trip.started_at,
         )
+        simplified_points = _simplify_route_points(points)
         return {
             "id": trip.id,
             "member_id": member_id,
             "started_at": trip.started_at,
             "ended_at": trip.ended_at,
             "distance_m": trip.distance_m,
-            "point_count": trip.point_count,
+            "point_count": len(simplified_points),
             "points": [
                 {
                     "member_id": point.member_id,
@@ -65,6 +71,62 @@ class TripViewService:
                     "battery_level": point.battery_level,
                     "source_entity_id": point.source_entity_id,
                 }
-                for point in points
+                for point in simplified_points
             ],
         }
+
+
+def _simplify_route_points(points: list[object]) -> list[object]:
+    if not points:
+        return []
+
+    filtered_points = _filter_display_points(points)
+    if len(filtered_points) < 2:
+        return filtered_points
+
+    simplified: list[object] = []
+    for point in filtered_points:
+        last_kept = simplified[-1] if simplified else None
+        if last_kept is None:
+            simplified.append(point)
+            continue
+
+        distance_from_last = haversine_m(
+            last_kept.latitude,
+            last_kept.longitude,
+            point.latitude,
+            point.longitude,
+        )
+        if distance_from_last <= ROUTE_DWELL_RADIUS_M or distance_from_last < ROUTE_MINIMUM_SEGMENT_M:
+            simplified[-1] = point
+            continue
+
+        simplified.append(point)
+
+    return simplified
+
+
+def _filter_display_points(points: list[object]) -> list[object]:
+    if not points:
+        return []
+
+    filtered = [
+        point
+        for index, point in enumerate(points)
+        if index == 0
+        or index == len(points) - 1
+        or point.accuracy_m is None
+        or point.accuracy_m <= ROUTE_MAXIMUM_DISPLAY_ACCURACY_M
+    ]
+
+    deduped: list[object] = []
+    for point in filtered:
+        previous = deduped[-1] if deduped else None
+        if (
+            previous is None
+            or previous.latitude != point.latitude
+            or previous.longitude != point.longitude
+            or previous.observed_at != point.observed_at
+        ):
+            deduped.append(point)
+    return deduped

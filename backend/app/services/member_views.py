@@ -102,44 +102,15 @@ class MemberViewService:
             return []
 
         points = self.repository.list_member_history(member_id, start, end)
-        places = [
-            {
-                "id": place.id,
-                "name": place.name,
-                "latitude": place.latitude,
-                "longitude": place.longitude,
-                "radius_m": place.radius_m,
-                "is_safe_zone": place.is_safe_zone,
-            }
-            for place in self.repository.list_places_for_family_id(member.family_id)
-        ]
-        stops = derive_stops(
-            points,
+        places = _serialize_places(self.repository.list_places_for_family_id(member.family_id))
+        return _build_stop_items(
+            points=points,
+            places=places,
+            place_matcher=self.place_matcher,
+            reverse_geocoder=self.reverse_geocoder,
             dwell_radius_m=dwell_radius_m,
             minimum_duration=minimum_duration,
         )
-
-        items = []
-        for stop in stops:
-            matched_place = self.place_matcher.match(places, stop.latitude, stop.longitude)
-            place_name = matched_place["name"] if matched_place is not None else None
-            address = None if place_name is not None else self.reverse_geocoder.reverse(stop.latitude, stop.longitude)
-            items.append(
-                {
-                    "started_at": stop.started_at,
-                    "ended_at": stop.ended_at,
-                    "duration_seconds": stop.duration_seconds,
-                    "latitude": stop.latitude,
-                    "longitude": stop.longitude,
-                    "point_count": stop.point_count,
-                    "place_id": matched_place["id"] if matched_place is not None else None,
-                    "place_name": place_name,
-                    "address": address,
-                    "label": place_name or address,
-                }
-            )
-
-        return items
 
     def timeline(self, member_id: UUID, start: datetime, end: datetime) -> list[dict]:
         member = self.repository.get_member(member_id)
@@ -179,15 +150,28 @@ class MemberViewService:
         self.repository.commit()
 
         items = []
-        for point in points:
+        stop_items = _build_stop_items(
+            points=points,
+            places=places,
+            place_matcher=self.place_matcher,
+            reverse_geocoder=self.reverse_geocoder,
+            dwell_radius_m=250.0,
+            minimum_duration=timedelta(minutes=10),
+        )
+        for stop in stop_items:
             items.append(
                 {
-                    "kind": "location_point",
-                    "observed_at": point.observed_at,
-                    "latitude": point.latitude,
-                    "longitude": point.longitude,
-                    "battery_level": point.battery_level,
-                    "source_entity_id": point.source_entity_id,
+                    "kind": "location_stay",
+                    "observed_at": stop["started_at"],
+                    "started_at": stop["started_at"],
+                    "ended_at": stop["ended_at"],
+                    "duration_seconds": stop["duration_seconds"],
+                    "latitude": stop["latitude"],
+                    "longitude": stop["longitude"],
+                    "point_count": stop["point_count"],
+                    "place_id": stop["place_id"],
+                    "label": stop["label"],
+                    "is_current": stop["is_current"],
                 }
             )
         for event in self.repository.list_safety_events_for_range(member_id, start, end):
@@ -250,6 +234,60 @@ def _serialize_member(member) -> dict:
         "last_seen_at": member.last_seen_at,
         "devices": [_serialize_device(device) for device in member.devices],
     }
+
+
+def _serialize_places(places) -> list[dict]:
+    return [
+        {
+            "id": place.id,
+            "name": place.name,
+            "latitude": place.latitude,
+            "longitude": place.longitude,
+            "radius_m": place.radius_m,
+            "is_safe_zone": place.is_safe_zone,
+        }
+        for place in places
+    ]
+
+
+def _build_stop_items(
+    *,
+    points,
+    places: list[dict],
+    place_matcher: PlaceMatcher,
+    reverse_geocoder: ReverseGeocoder,
+    dwell_radius_m: float,
+    minimum_duration: timedelta,
+) -> list[dict]:
+    derived_stops = derive_stops(
+        points,
+        dwell_radius_m=dwell_radius_m,
+        minimum_duration=minimum_duration,
+    )
+    latest_observed_at = points[-1].observed_at if points else None
+
+    items = []
+    for index, stop in enumerate(derived_stops):
+        matched_place = place_matcher.match(places, stop.latitude, stop.longitude)
+        place_name = matched_place["name"] if matched_place is not None else None
+        address = None if place_name is not None else reverse_geocoder.reverse(stop.latitude, stop.longitude)
+        items.append(
+            {
+                "started_at": stop.started_at,
+                "ended_at": stop.ended_at,
+                "duration_seconds": stop.duration_seconds,
+                "latitude": stop.latitude,
+                "longitude": stop.longitude,
+                "point_count": stop.point_count,
+                "place_id": matched_place["id"] if matched_place is not None else None,
+                "place_name": place_name,
+                "address": address,
+                "label": place_name or address,
+                "is_current": index == len(derived_stops) - 1 and stop.ended_at == latest_observed_at,
+            }
+        )
+
+    return items
 
 
 def _dates_in_range(start_date: date, end_date: date) -> list[date]:

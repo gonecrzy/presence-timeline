@@ -36,9 +36,13 @@ import com.gonecrzy.gpstrack.data.model.TimelineItem
 import com.gonecrzy.gpstrack.data.model.TripRoute
 import com.gonecrzy.gpstrack.data.model.TripSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 
 @Composable
@@ -250,17 +254,100 @@ fun MemberDetailScreen(
         itemsIndexed(timeline, key = { index, item -> "${item.kind}-${item.observedAt}-${item.tripId ?: ""}-$index" }) { _, item ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(item.kind.replace('_', ' '), style = MaterialTheme.typography.titleSmall)
-                    Text(item.observedAt, style = MaterialTheme.typography.bodySmall)
+                    Text(formatTimelineTitle(item), style = MaterialTheme.typography.titleSmall)
+                    Text(formatTimelineWhen(item), style = MaterialTheme.typography.bodySmall)
                     when (item.kind) {
                         "trip" -> Text("${item.distanceM?.toInt() ?: 0} m over ${item.pointCount ?: 0} points")
+                        "location_stay" -> {
+                            Text(
+                                item.label ?: formatTimelineCoordinates(item),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                formatStaySummary(item),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         "safety_event" -> Text(item.eventType ?: "Safety event")
-                        else -> Text("${item.latitude ?: 0.0}, ${item.longitude ?: 0.0}")
+                        else -> Text(formatTimelineCoordinates(item))
                     }
                 }
             }
         }
     }
+}
+
+private fun formatTimelineTitle(item: TimelineItem): String {
+    return when (item.kind) {
+        "location_stay" -> if (item.isCurrent == true) "Current location" else "Location stay"
+        "safety_event" -> "Safety event"
+        "trip" -> "Trip"
+        else -> item.kind.replace('_', ' ')
+    }
+}
+
+private fun formatTimelineWhen(item: TimelineItem): String {
+    return when (item.kind) {
+        "location_stay" -> {
+            val start = item.startedAt ?: item.observedAt
+            val end = item.endedAt
+            if (item.isCurrent == true) {
+                "Since ${formatTimelineTimestamp(start)}"
+            } else {
+                "${formatTimelineTimestamp(start)} to ${formatTimelineTimestamp(end)}"
+            }
+        }
+        "trip" -> {
+            val start = item.startedAt ?: item.observedAt
+            val end = item.endedAt
+            "${formatTimelineTimestamp(start)} to ${formatTimelineTimestamp(end)}"
+        }
+        else -> formatTimelineTimestamp(item.observedAt)
+    }
+}
+
+private fun formatStaySummary(item: TimelineItem): String {
+    val duration = item.durationSeconds?.let(::formatDurationSeconds) ?: "a short time"
+    return if (item.isCurrent == true) {
+        "At this location for $duration"
+    } else {
+        "Stayed for $duration"
+    }
+}
+
+private fun formatTimelineCoordinates(item: TimelineItem): String {
+    val latitude = item.latitude ?: 0.0
+    val longitude = item.longitude ?: 0.0
+    return "${"%.4f".format(latitude)}, ${"%.4f".format(longitude)}"
+}
+
+private fun formatTimelineTimestamp(value: String?): String {
+    if (value == null) {
+        return "Unknown time"
+    }
+    return runCatching {
+        TimelineFormatter.format(Instant.parse(value))
+    }.getOrDefault(value)
+}
+
+private fun formatDurationSeconds(durationSeconds: Int): String {
+    val duration = Duration.ofSeconds(durationSeconds.toLong())
+    val hours = duration.toHours()
+    val minutes = duration.minusHours(hours).toMinutes()
+
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        minutes > 0 -> "${minutes}m"
+        else -> "${durationSeconds}s"
+    }
+}
+
+private object TimelineFormatter {
+    private val formatter = DateTimeFormatter.ofPattern("MMM d, h:mm a")
+        .withZone(ZoneId.systemDefault())
+
+    fun format(value: Instant): String = formatter.format(value)
 }
 
 @Composable

@@ -10,8 +10,11 @@ class TimelineItemResponse(BaseModel):
     trip_id: UUID | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None
+    duration_seconds: int | None = None
     latitude: float | None = None
     longitude: float | None = None
+    label: str | None = None
+    is_current: bool | None = None
     battery_level: int | None = None
     source_entity_id: str | None = None
     distance_m: float | None = None
