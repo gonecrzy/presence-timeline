@@ -2,11 +2,13 @@ package com.gonecrzy.gpstrack.ui.format
 
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yy HH:mm")
     .withZone(ZoneId.systemDefault())
+private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yy")
 
 fun formatPhoneDateTime(value: String?): String {
     if (value == null) {
@@ -21,6 +23,10 @@ fun formatPhoneDateTimeRange(start: String?, end: String?): String {
     val startLabel = formatPhoneDateTime(start)
     val endLabel = end?.let(::formatPhoneDateTime) ?: "In progress"
     return "$startLabel to $endLabel"
+}
+
+fun formatDisplayDate(value: LocalDate): String {
+    return dateFormatter.format(value)
 }
 
 fun formatDurationSeconds(durationSeconds: Int): String {

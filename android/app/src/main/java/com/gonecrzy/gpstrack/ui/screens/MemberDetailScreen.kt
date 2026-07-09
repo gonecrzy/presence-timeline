@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import com.gonecrzy.gpstrack.ui.format.formatDisplayDate
 import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTimeRange
@@ -54,22 +56,29 @@ fun MemberDetailScreen(
     val scope = rememberCoroutineScope()
     val members by repository.observeMembers().collectAsState(initial = emptyList())
     val member = members.firstOrNull { it.id == memberId }
-    val today = LocalDate.now(ZoneOffset.UTC).toString()
-    val timelineRangeStart = ZonedDateTime.now(ZoneOffset.UTC).minusHours(6).toString()
-    val timelineRangeEnd = ZonedDateTime.now(ZoneOffset.UTC).toString()
+    val today = LocalDate.now(ZoneOffset.UTC)
+    val earliestDate = remember(today) { today.minusDays(6) }
+    var selectedDate by rememberSaveable { mutableStateOf(today.toString()) }
+    val activeDate = remember(selectedDate) { LocalDate.parse(selectedDate) }
+    val timelineRangeStart = remember(activeDate) {
+        activeDate.atStartOfDay(ZoneOffset.UTC).toInstant().toString()
+    }
+    val timelineRangeEnd = remember(activeDate) {
+        activeDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toString()
+    }
     var tripRoute by remember { mutableStateOf<TripRoute?>(null) }
     var editingProfile by remember { mutableStateOf(false) }
     var editingDevice by remember { mutableStateOf<DeviceSummary?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
 
-    val trips by produceState(initialValue = emptyList<TripSummary>(), key1 = memberId) {
-        value = runCatching { repository.loadTrips(memberId, today) }.getOrDefault(emptyList())
+    val trips by produceState(initialValue = emptyList<TripSummary>(), key1 = memberId, key2 = selectedDate) {
+        value = runCatching { repository.loadTrips(memberId, activeDate.toString()) }.getOrDefault(emptyList())
     }
-    val summary by produceState<DailySummary?>(initialValue = null, key1 = memberId) {
-        value = runCatching { repository.loadDailySummary(memberId, today) }.getOrNull()
+    val summary by produceState<DailySummary?>(initialValue = null, key1 = memberId, key2 = selectedDate) {
+        value = runCatching { repository.loadDailySummary(memberId, activeDate.toString()) }.getOrNull()
     }
-    val timeline by produceState(initialValue = emptyList<TimelineItem>(), key1 = memberId) {
+    val timeline by produceState(initialValue = emptyList<TimelineItem>(), key1 = memberId, key2 = selectedDate) {
         value = runCatching {
             repository.loadTimeline(memberId, timelineRangeStart, timelineRangeEnd)
         }.getOrDefault(emptyList())
@@ -199,12 +208,43 @@ fun MemberDetailScreen(
         summary?.let { daySummary ->
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text("Trips today: ${daySummary.tripCount}")
-                        Text("Distance: ${daySummary.totalDistanceM.toInt()} m")
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    if (activeDate.isAfter(earliestDate)) {
+                                        selectedDate = activeDate.minusDays(1).toString()
+                                    }
+                                },
+                                enabled = activeDate.isAfter(earliestDate),
+                            ) {
+                                Text("Previous")
+                            }
+                            Text(
+                                if (activeDate == today) "Today · ${formatDisplayDate(activeDate)}" else formatDisplayDate(activeDate),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            TextButton(
+                                onClick = {
+                                    if (activeDate.isBefore(today)) {
+                                        selectedDate = activeDate.plusDays(1).toString()
+                                    }
+                                },
+                                enabled = activeDate.isBefore(today),
+                            ) {
+                                Text("Next")
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Trips: ${daySummary.tripCount}")
+                            Text("Distance: ${daySummary.totalDistanceM.toInt()} m")
+                        }
                     }
                 }
             }
