@@ -1,0 +1,7 @@
+<resources>
+    <color name="brand_ink">#0D1B2A</color>
+    <color name="brand_ocean">#1B4965</color>
+    <color name="brand_sky">#5FA8D3</color>
+    <color name="brand_sand">#EAE7DC</color>
+    <color name="brand_alert">#C44536</color>
+</resources>

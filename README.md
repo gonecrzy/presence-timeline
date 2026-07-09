@@ -5,6 +5,7 @@ Private, self-hosted, Android-first family location tracking.
 This repository currently contains the backend foundation:
 
 - `backend/`: FastAPI service, normalized domain models, provider seams, tests
+- `android/`: Android-first parent app scaffold targeting the backend API
 - `docs/`: architecture notes and implementation constraints
 - `docker-compose.yml`: local API + PostGIS runtime
 
@@ -24,6 +25,17 @@ docker compose up --build
 ```
 
 3. The API will be available at `http://localhost:${GPSTRACK_API_PORT:-8000}`.
+
+## Android scaffold
+
+The Android app currently targets local-first development with a configurable backend base URL and open auth mode.
+
+See [android/README.md](/root/gpstrack/android/README.md) for:
+
+- SDK prerequisites
+- local backend URL setup
+- local debug build instructions
+- release APK publishing to git-hosted release targets
 
 ## Backend verification
 
