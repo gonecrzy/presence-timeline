@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.Typeface
 import android.os.Bundle
 import androidx.compose.foundation.clickable
@@ -49,26 +50,35 @@ import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
+import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
+import com.gonecrzy.gpstrack.ui.map.ensureSymbolLayer
+import com.gonecrzy.gpstrack.ui.map.markerIconProperties
+import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.IconFactory
-import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
 
 private const val RouteWindowHours = 24L
 private const val DwellRadiusMeters = 250.0
 private const val MinimumDisplaySegmentMeters = 25.0
 private const val MaximumAutoZoom = 12.0
 private const val MarkerGroupingRadiusMeters = 40.0
+private const val MarkerSourceId = "gpstrack-family-markers"
+private const val MarkerLayerId = "gpstrack-family-marker-layer"
+private const val RouteSourceId = "gpstrack-live-route"
+private const val RouteLayerId = "gpstrack-live-route-layer"
 
 @Composable
 fun MapScreen(
@@ -82,9 +92,6 @@ fun MapScreen(
         initial = com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL,
     )
     var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
-    val iconFactory = remember(context) {
-        IconFactory.getInstance(context)
-    }
 
     LaunchedEffect(Unit) {
         runCatching { repository.refreshMembers() }
@@ -230,7 +237,6 @@ fun MapScreen(
         item {
             MapSurface(
                 context = context,
-                iconFactory = iconFactory,
                 mapStyleUrl = mapStyleUrl,
                 members = selectedMemberStates,
                 selectedMemberId = selectedMemberId,
@@ -310,7 +316,6 @@ fun MapScreen(
 @Composable
 private fun MapSurface(
     context: Context,
-    iconFactory: IconFactory,
     mapStyleUrl: String,
     members: List<MapMemberState>,
     selectedMemberId: String?,
@@ -327,11 +332,26 @@ private fun MapSurface(
     }
 
     DisposableEffect(lifecycleOwner, mapView) {
-        mapView.getMapAsync { map ->
-            map.setOnMarkerClickListener { marker ->
-                marker.snippet?.let(onMarkerSelected)
+        var mapReference: MapLibreMap? = null
+        val clickListener = MapLibreMap.OnMapClickListener { latLng ->
+            val map = mapReference ?: return@OnMapClickListener false
+            val screenPoint = map.projection.toScreenLocation(latLng)
+            val selectedMember = map.queryRenderedFeatures(
+                PointF(screenPoint.x, screenPoint.y),
+                MarkerLayerId,
+            ).firstOrNull { it.hasNonNullValueForProperty("memberId") }
+                ?.getStringProperty("memberId")
+            if (selectedMember != null) {
+                onMarkerSelected(selectedMember)
+                true
+            } else {
                 false
             }
+        }
+
+        mapView.getMapAsync { map ->
+            mapReference = map
+            map.addOnMapClickListener(clickListener)
         }
 
         val observer = LifecycleEventObserver { _, event ->
@@ -346,6 +366,7 @@ private fun MapSurface(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            mapReference?.removeOnMapClickListener(clickListener)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
@@ -357,11 +378,10 @@ private fun MapSurface(
             update = {
                 it.getMapAsync { map ->
                     map.setMinZoomPreference(0.0)
-                    if (map.style?.url != mapStyleUrl) {
+                    if (map.style?.uri != mapStyleUrl) {
                         map.setStyle(mapStyleUrl) {
                             renderMap(
                                 context = context,
-                                iconFactory = iconFactory,
                                 map = map,
                                 members = members,
                                 selectedMemberId = selectedMemberId,
@@ -371,7 +391,6 @@ private fun MapSurface(
                     } else {
                         renderMap(
                             context = context,
-                            iconFactory = iconFactory,
                             map = map,
                             members = members,
                             selectedMemberId = selectedMemberId,
@@ -386,16 +405,16 @@ private fun MapSurface(
 
 private fun renderMap(
     context: Context,
-    iconFactory: IconFactory,
     map: MapLibreMap,
     members: List<MapMemberState>,
     selectedMemberId: String?,
     routePoints: List<LocationPoint>,
 ) {
-    map.clear()
+    val style = map.style ?: return
 
     val boundsBuilder = LatLngBounds.Builder()
     var pointCount = 0
+    val markerFeatures = mutableListOf<Feature>()
 
     val markerClusters = MapSnapshotCalculator.groupMarkerPoints(
         points = members.mapNotNull { state ->
@@ -415,54 +434,72 @@ private fun renderMap(
         val clusterIsSelected = cluster.items.any { it.member.id == selectedMemberId }
         val isSingleMember = cluster.items.size == 1
         val representative = cluster.items.first()
-        map.addMarker(
-            MarkerOptions()
-                .position(position)
-                .icon(
-                    if (isSingleMember) {
-                        createMemberMarkerIcon(
-                            context = context,
-                            iconFactory = iconFactory,
-                            displayName = representative.member.displayName,
-                            isSelected = clusterIsSelected,
-                            isChild = representative.member.isChild,
-                        )
-                    } else {
-                        createClusterMarkerIcon(
-                            context = context,
-                            iconFactory = iconFactory,
-                            count = cluster.items.size,
-                            isSelected = clusterIsSelected,
-                        )
-                    },
+        val iconKey = if (isSingleMember) {
+            memberMarkerImageKey(
+                displayName = representative.member.displayName,
+                isSelected = clusterIsSelected,
+                isChild = representative.member.isChild,
+            )
+        } else {
+            clusterMarkerImageKey(count = cluster.items.size, isSelected = clusterIsSelected)
+        }
+        style.addImage(
+            iconKey,
+            if (isSingleMember) {
+                createMemberMarkerBitmap(
+                    context = context,
+                    displayName = representative.member.displayName,
+                    isSelected = clusterIsSelected,
+                    isChild = representative.member.isChild,
                 )
-                .title(
-                    if (isSingleMember) {
-                        buildString {
-                            append(representative.member.displayName)
-                            if (clusterIsSelected) append(" · active")
-                        }
-                    } else {
-                        "${cluster.items.size} family members: ${cluster.items.joinToString { it.member.displayName }}"
-                    },
+            } else {
+                createClusterMarkerBitmap(
+                    context = context,
+                    count = cluster.items.size,
+                    isSelected = clusterIsSelected,
                 )
-                .snippet(if (isSingleMember) representative.member.id else null),
+            },
         )
+
+        val feature = Feature.fromGeometry(Point.fromLngLat(cluster.longitude, cluster.latitude)).apply {
+            addStringProperty("iconKey", iconKey)
+            if (isSingleMember) {
+                addStringProperty("memberId", representative.member.id)
+            }
+        }
+        markerFeatures += feature
         boundsBuilder.include(position)
         pointCount += 1
     }
 
-    if (routePoints.size >= 2) {
-        val path = routePoints.map { LatLng(it.latitude, it.longitude) }
-        map.addPolyline(
-            PolylineOptions()
-                .addAll(path)
-                .color(Color.parseColor("#58C4DD"))
-                .width(5f),
-        )
-        path.forEach(boundsBuilder::include)
+    style.upsertGeoJsonSource(
+        MarkerSourceId,
+        FeatureCollection.fromFeatures(markerFeatures),
+    )
+    style.ensureSymbolLayer(
+        layerId = MarkerLayerId,
+        sourceId = MarkerSourceId,
+        properties = markerIconProperties(get("iconKey")),
+    )
+
+    val routeGeometry = if (routePoints.size >= 2) {
+        val path = routePoints.map { point ->
+            boundsBuilder.include(LatLng(point.latitude, point.longitude))
+            Point.fromLngLat(point.longitude, point.latitude)
+        }
         pointCount += path.size
+        FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(path)))
+    } else {
+        FeatureCollection.fromFeatures(emptyList())
     }
+    style.upsertGeoJsonSource(RouteSourceId, routeGeometry)
+    style.ensureLineLayer(
+        layerId = RouteLayerId,
+        sourceId = RouteSourceId,
+        color = Color.parseColor("#58C4DD"),
+        width = 5f,
+        belowLayerId = MarkerLayerId,
+    )
 
     when {
         pointCount == 0 -> {
@@ -529,14 +566,23 @@ private fun formatCoordinates(latitude: Double, longitude: Double): String {
     return "${"%.4f".format(latitude)}, ${"%.4f".format(longitude)}"
 }
 
-private fun createMemberMarkerIcon(
-    context: Context,
-    iconFactory: IconFactory,
+private fun memberMarkerImageKey(
     displayName: String,
     isSelected: Boolean,
     isChild: Boolean,
-) = iconFactory.fromBitmap(
-    Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
+) = "member-${MapSnapshotCalculator.buildInitials(displayName)}-${if (isSelected) 1 else 0}-${if (isChild) 1 else 0}"
+
+private fun clusterMarkerImageKey(
+    count: Int,
+    isSelected: Boolean,
+) = "cluster-$count-${if (isSelected) 1 else 0}"
+
+private fun createMemberMarkerBitmap(
+    context: Context,
+    displayName: String,
+    isSelected: Boolean,
+    isChild: Boolean,
+) = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
         val canvas = Canvas(this)
         val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = when {
@@ -563,16 +609,13 @@ private fun createMemberMarkerIcon(
         canvas.drawCircle(centerX, centerY, radius, outlinePaint)
         val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
         canvas.drawText(MapSnapshotCalculator.buildInitials(displayName), centerX, baseline, textPaint)
-    },
-)
+    }
 
-private fun createClusterMarkerIcon(
+private fun createClusterMarkerBitmap(
     context: Context,
-    iconFactory: IconFactory,
     count: Int,
     isSelected: Boolean,
-) = iconFactory.fromBitmap(
-    Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
+) = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
         val canvas = Canvas(this)
         val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = if (isSelected) Color.parseColor("#1794C8") else Color.parseColor("#42566B")
@@ -595,8 +638,7 @@ private fun createClusterMarkerIcon(
         canvas.drawCircle(centerX, centerY, radius, outlinePaint)
         val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
         canvas.drawText(count.toString(), centerX, baseline, textPaint)
-    },
-)
+    }
 
 private data class MapMemberState(
     val member: MemberSummary,

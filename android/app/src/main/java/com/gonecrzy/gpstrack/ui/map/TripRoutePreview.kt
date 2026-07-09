@@ -14,14 +14,21 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.gonecrzy.gpstrack.BuildConfig
 import com.gonecrzy.gpstrack.data.model.TripRoute
+import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
+import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
+
+private const val TripPreviewSourceId = "gpstrack-trip-preview"
+private const val TripPreviewLayerId = "gpstrack-trip-preview-layer"
 
 @Composable
 fun TripRoutePreview(
@@ -59,7 +66,7 @@ fun TripRoutePreview(
         factory = { mapView },
         update = {
             it.getMapAsync { map ->
-                if (map.style?.url != BuildConfig.DEFAULT_MAP_STYLE_URL) {
+                if (map.style?.uri != BuildConfig.DEFAULT_MAP_STYLE_URL) {
                     map.setStyle(BuildConfig.DEFAULT_MAP_STYLE_URL) {
                         renderTripRoutePreview(context, map, route)
                     }
@@ -76,8 +83,18 @@ private fun renderTripRoutePreview(
     map: MapLibreMap,
     route: TripRoute,
 ) {
-    map.clear()
+    val style = map.style ?: return
     if (route.points.isEmpty()) {
+        style.upsertGeoJsonSource(
+            TripPreviewSourceId,
+            FeatureCollection.fromFeatures(emptyList()),
+        )
+        style.ensureLineLayer(
+            layerId = TripPreviewLayerId,
+            sourceId = TripPreviewSourceId,
+            color = Color.parseColor("#58C4DD"),
+            width = context.resources.displayMetrics.density * 3f,
+        )
         map.cameraPosition = CameraPosition.Builder()
             .target(LatLng(20.0, 0.0))
             .zoom(1.0)
@@ -86,19 +103,22 @@ private fun renderTripRoutePreview(
     }
 
     val path = route.points.map { LatLng(it.latitude, it.longitude) }
+    val linePoints = route.points.map { Point.fromLngLat(it.longitude, it.latitude) }
     val boundsBuilder = LatLngBounds.Builder()
     path.forEach(boundsBuilder::include)
 
-    map.addPolyline(
-        PolylineOptions()
-            .addAll(path)
-            .color(Color.parseColor("#58C4DD"))
-            .width(context.resources.displayMetrics.density * 3f),
+    style.upsertGeoJsonSource(
+        TripPreviewSourceId,
+        FeatureCollection.fromFeature(
+            Feature.fromGeometry(LineString.fromLngLats(linePoints)),
+        ),
     )
-    map.addMarker(MarkerOptions().position(path.first()).title("Start"))
-    if (path.size > 1) {
-        map.addMarker(MarkerOptions().position(path.last()).title("End"))
-    }
+    style.ensureLineLayer(
+        layerId = TripPreviewLayerId,
+        sourceId = TripPreviewSourceId,
+        color = Color.parseColor("#58C4DD"),
+        width = context.resources.displayMetrics.density * 3f,
+    )
 
     runCatching {
         map.getCameraForLatLngBounds(

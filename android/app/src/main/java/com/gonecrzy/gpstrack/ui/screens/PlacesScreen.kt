@@ -42,18 +42,29 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.gonecrzy.gpstrack.data.model.PlaceSearchCandidate
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import com.gonecrzy.gpstrack.ui.map.ensureCircleLayer
+import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
+import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.style.expressions.Expression.eq
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
+
+private const val PlacePreviewSourceId = "gpstrack-place-preview"
+private const val PlacePreviewRingLayerId = "gpstrack-place-preview-ring"
+private const val PlacePreviewCenterLayerId = "gpstrack-place-preview-center"
 
 @Composable
 fun PlacesScreen(repository: GpsTrackRepository) {
@@ -314,7 +325,7 @@ private fun PlacePreviewMap(
         factory = { mapView },
         update = {
             it.getMapAsync { map ->
-                if (map.style?.url != com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL) {
+                if (map.style?.uri != com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL) {
                     map.setStyle(com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL) {
                         renderPlacePreview(map, latitude, longitude, radiusMeters)
                     }
@@ -332,16 +343,45 @@ private fun renderPlacePreview(
     longitude: Double,
     radiusMeters: Double,
 ) {
-    map.clear()
+    val style = map.style ?: return
     val center = LatLng(latitude, longitude)
     val ring = buildRadiusRing(latitude, longitude, radiusMeters)
+    val previewFeatures = buildList {
+        add(
+            Feature.fromGeometry(Point.fromLngLat(longitude, latitude)).apply {
+                addStringProperty("kind", "center")
+            },
+        )
+        add(
+            Feature.fromGeometry(
+                LineString.fromLngLats(
+                    ring.map { point -> Point.fromLngLat(point.longitude, point.latitude) },
+                ),
+            ).apply {
+                addStringProperty("kind", "ring")
+            },
+        )
+    }
 
-    map.addMarker(MarkerOptions().position(center))
-    map.addPolyline(
-        PolylineOptions()
-            .addAll(ring)
-            .color(Color.parseColor("#1794C8"))
-            .width(4f),
+    style.upsertGeoJsonSource(
+        PlacePreviewSourceId,
+        FeatureCollection.fromFeatures(previewFeatures),
+    )
+    style.ensureLineLayer(
+        layerId = PlacePreviewRingLayerId,
+        sourceId = PlacePreviewSourceId,
+        color = Color.parseColor("#1794C8"),
+        width = 4f,
+        filter = eq(get("kind"), "ring"),
+    )
+    style.ensureCircleLayer(
+        layerId = PlacePreviewCenterLayerId,
+        sourceId = PlacePreviewSourceId,
+        color = Color.parseColor("#1794C8"),
+        radius = 6f,
+        strokeColor = Color.WHITE,
+        strokeWidth = 2f,
+        filter = eq(get("kind"), "center"),
     )
 
     val boundsBuilder = LatLngBounds.Builder().include(center)
