@@ -162,6 +162,32 @@ object MapSnapshotCalculator {
         }
     }
 
+    fun assembleTripRoutePoints(
+        routes: List<List<LocationPoint>>,
+        windowStart: Instant,
+        windowEnd: Instant,
+    ): List<LocationPoint> {
+        return routes
+            .flatten()
+            .sortedBy(LocationPoint::observedAt)
+            .filter { point ->
+                val observedAt = Instant.parse(point.observedAt)
+                !observedAt.isBefore(windowStart) && !observedAt.isAfter(windowEnd)
+            }
+            .fold(mutableListOf<LocationPoint>()) { deduped, point ->
+                val previous = deduped.lastOrNull()
+                if (
+                    previous == null ||
+                    previous.observedAt != point.observedAt ||
+                    previous.latitude != point.latitude ||
+                    previous.longitude != point.longitude
+                ) {
+                    deduped += point
+                }
+                deduped
+            }
+    }
+
     private fun filterDisplayPoints(points: List<LocationPoint>): List<LocationPoint> {
         if (points.isEmpty()) {
             return emptyList()

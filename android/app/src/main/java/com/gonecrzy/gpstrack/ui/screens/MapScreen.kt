@@ -51,6 +51,8 @@ import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
@@ -118,8 +120,38 @@ fun MapScreen(
         val end = Instant.now()
         val start = end.minus(RouteWindowHours, ChronoUnit.HOURS)
         value = runCatching {
-            repository.loadMemberHistory(activeMemberId, start.toString(), end.toString())
-        }.getOrDefault(emptyList()).sortedBy { it.observedAt }
+            val utcDate = end.atZone(ZoneOffset.UTC).toLocalDate()
+            val candidateDates = listOf(utcDate.minusDays(1), utcDate).distinct()
+            val trips = candidateDates.flatMap { date ->
+                repository.loadTrips(activeMemberId, date.toString())
+            }.sortedBy { it.startedAt }
+
+            val routes = trips.mapNotNull { trip ->
+                val tripStartedAt = runCatching { Instant.parse(trip.startedAt) }.getOrNull()
+                val tripEndedAt = runCatching { Instant.parse(trip.endedAt ?: trip.startedAt) }.getOrNull()
+                if (tripStartedAt == null || tripEndedAt == null || tripEndedAt.isBefore(start) || tripStartedAt.isAfter(end)) {
+                    null
+                } else {
+                    repository.loadTripRoute(activeMemberId, trip.id).points.map { point ->
+                        LocationPoint(
+                            memberId = point.memberId,
+                            observedAt = point.observedAt,
+                            latitude = point.latitude,
+                            longitude = point.longitude,
+                            accuracyM = point.accuracyM,
+                            batteryLevel = point.batteryLevel,
+                            sourceEntityId = point.sourceEntityId,
+                        )
+                    }
+                }
+            }
+
+            MapSnapshotCalculator.assembleTripRoutePoints(
+                routes = routes,
+                windowStart = start,
+                windowEnd = end,
+            )
+        }.getOrDefault(emptyList())
     }
     val selectedStops by produceState(
         initialValue = emptyList<LocationStop>(),
@@ -140,8 +172,8 @@ fun MapScreen(
     }
 
     val selectedLatestLocation = selectedMemberId?.let(latestLocations::get)
-    val dwellStart = remember(routePoints) {
-        MapSnapshotCalculator.findDwellStart(routePoints, DwellRadiusMeters)
+    val dwellStart = remember(selectedStops) {
+        selectedStops.lastOrNull()?.startedAt?.let { Instant.parse(it) }
     }
     val displayRoutePoints = remember(routePoints) {
         MapSnapshotCalculator.buildDisplayRoute(

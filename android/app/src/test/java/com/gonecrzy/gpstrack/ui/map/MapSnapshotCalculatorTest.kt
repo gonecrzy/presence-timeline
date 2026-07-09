@@ -163,6 +163,33 @@ class MapSnapshotCalculatorTest {
         assertEquals(listOf("member-c"), clusters[1].items)
     }
 
+    @Test
+    fun `trip route assembly keeps last 24 hours in order across route lists`() {
+        val assembled = MapSnapshotCalculator.assembleTripRoutePoints(
+            routes = listOf(
+                listOf(
+                    point("2026-07-08T23:30:00Z", 37.4000, -122.0800),
+                    point("2026-07-08T23:50:00Z", 37.4050, -122.0850),
+                ),
+                listOf(
+                    point("2026-07-09T00:10:00Z", 37.4100, -122.0900),
+                    point("2026-07-09T01:00:00Z", 37.4200, -122.1000),
+                ),
+            ),
+            windowStart = Instant.parse("2026-07-08T23:40:00Z"),
+            windowEnd = Instant.parse("2026-07-09T01:00:00Z"),
+        )
+
+        assertEquals(
+            listOf(
+                "2026-07-08T23:50:00Z",
+                "2026-07-09T00:10:00Z",
+                "2026-07-09T01:00:00Z",
+            ),
+            assembled.map(LocationPoint::observedAt),
+        )
+    }
+
     private fun point(
         observedAt: String,
         latitude: Double,
