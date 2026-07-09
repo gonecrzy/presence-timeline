@@ -23,6 +23,7 @@ import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -222,7 +223,9 @@ class GpsTrackRepository(
 
     companion object {
         fun create(context: Context): GpsTrackRepository {
-            val moshi = Moshi.Builder().build()
+            val moshi = Moshi.Builder()
+                .addLast(KotlinJsonAdapterFactory())
+                .build()
             return GpsTrackRepository(
                 database = GpsTrackDatabase.build(context),
                 preferences = AppPreferences(context),
