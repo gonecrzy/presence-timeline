@@ -33,6 +33,21 @@ data class LocationPointDto(
 
 data class LocationHistoryResponseDto(val items: List<LocationPointDto>)
 
+data class StopListResponseDto(val items: List<StopDto>)
+
+data class StopDto(
+    @Json(name = "started_at") val startedAt: String,
+    @Json(name = "ended_at") val endedAt: String,
+    @Json(name = "duration_seconds") val durationSeconds: Int,
+    val latitude: Double,
+    val longitude: Double,
+    @Json(name = "point_count") val pointCount: Int,
+    @Json(name = "place_id") val placeId: String?,
+    @Json(name = "place_name") val placeName: String?,
+    val address: String?,
+    val label: String?,
+)
+
 data class MemberUpdateRequestDto(
     @Json(name = "display_name") val displayName: String?,
     @Json(name = "is_child") val isChild: Boolean?,

@@ -1,6 +1,11 @@
 package com.gonecrzy.gpstrack.ui.screens
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Bundle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +42,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.gonecrzy.gpstrack.data.model.LocationPoint
+import com.gonecrzy.gpstrack.data.model.LocationStop
 import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.data.settings.AppPreferences
@@ -45,6 +51,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
@@ -56,6 +63,7 @@ import org.maplibre.android.maps.MapView
 private const val RouteWindowHours = 24L
 private const val DwellRadiusMeters = 250.0
 private const val MinimumDisplaySegmentMeters = 25.0
+private const val MaximumAutoZoom = 12.0
 
 @Composable
 fun MapScreen(
@@ -63,11 +71,15 @@ fun MapScreen(
     preferences: AppPreferences,
     onMemberSelected: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     val members by repository.observeMembers().collectAsState(initial = emptyList())
     val mapStyleUrl by preferences.mapStyleUrl.collectAsState(
         initial = com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL,
     )
     var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
+    val iconFactory = remember(context) {
+        IconFactory.getInstance(context)
+    }
 
     LaunchedEffect(Unit) {
         runCatching { repository.refreshMembers() }
@@ -82,9 +94,9 @@ fun MapScreen(
         }.toMap()
     }
 
-    LaunchedEffect(members, latestLocations, selectedMemberId) {
-        if (selectedMemberId == null || members.none { it.id == selectedMemberId }) {
-            selectedMemberId = members.firstOrNull { latestLocations[it.id] != null }?.id ?: members.firstOrNull()?.id
+    LaunchedEffect(members, selectedMemberId) {
+        if (selectedMemberId != null && members.none { it.id == selectedMemberId }) {
+            selectedMemberId = null
         }
     }
 
@@ -106,6 +118,23 @@ fun MapScreen(
             repository.loadMemberHistory(activeMemberId, start.toString(), end.toString())
         }.getOrDefault(emptyList()).sortedBy { it.observedAt }
     }
+    val selectedStops by produceState(
+        initialValue = emptyList<LocationStop>(),
+        key1 = selectedMemberId,
+        key2 = selectedMember?.lastSeenAt,
+    ) {
+        val activeMemberId = selectedMemberId
+        if (activeMemberId == null) {
+            value = emptyList()
+            return@produceState
+        }
+
+        val end = Instant.now()
+        val start = end.minus(RouteWindowHours, ChronoUnit.HOURS)
+        value = runCatching {
+            repository.loadMemberStops(activeMemberId, start.toString(), end.toString())
+        }.getOrDefault(emptyList()).sortedBy { it.startedAt }
+    }
 
     val selectedLatestLocation = selectedMemberId?.let(latestLocations::get)
     val dwellStart = remember(routePoints) {
@@ -121,6 +150,7 @@ fun MapScreen(
     val selectedMemberStates = members.map { member ->
         MapMemberState(member = member, latestLocation = latestLocations[member.id])
     }
+    val currentStop = selectedStops.lastOrNull()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -135,7 +165,7 @@ fun MapScreen(
                         if (selectedMember != null) {
                             "Showing ${selectedMember.displayName}'s last $RouteWindowHours hours with current family positions."
                         } else {
-                            "Current family positions appear here when location history is available."
+                            "Showing current family positions. Tap a family member to load their last $RouteWindowHours hours."
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -145,16 +175,27 @@ fun MapScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
+                        currentStop?.let { stop ->
+                            Text(
+                                formatStopLabel(stop),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                         Text(
                             "Last update ${selectedLatestLocation.observedAt}",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        TextButton(onClick = { selectedMemberId = null }) {
+                            Text("Show Family Overview")
+                        }
                     }
                 }
             }
         }
         item {
             MapSurface(
+                context = context,
+                iconFactory = iconFactory,
                 mapStyleUrl = mapStyleUrl,
                 members = selectedMemberStates,
                 selectedMemberId = selectedMemberId,
@@ -182,8 +223,13 @@ fun MapScreen(
                     )
                     Text(
                         state.latestLocation?.let { latest ->
-                            val arrived = if (isSelected) formatRelativeDuration(dwellStart) else "Tap to load route"
-                            "Current: ${formatCoordinates(latest.latitude, latest.longitude)} · Arrived $arrived"
+                            if (isSelected) {
+                                val currentLabel = currentStop?.let(::formatStopLabel)
+                                    ?: formatCoordinates(latest.latitude, latest.longitude)
+                                "Current: $currentLabel · Arrived ${formatRelativeDuration(dwellStart)}"
+                            } else {
+                                "Current: ${formatCoordinates(latest.latitude, latest.longitude)} · Tap to load route"
+                            }
                         } ?: "No current location available",
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -198,11 +244,31 @@ fun MapScreen(
                 }
             }
         }
+        if (selectedMember != null && selectedStops.isNotEmpty()) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Recent Stops", style = MaterialTheme.typography.titleMedium)
+                        selectedStops.asReversed().take(5).forEach { stop ->
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(formatStopLabel(stop), style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "Stayed ${formatDurationSeconds(stop.durationSeconds)} · Arrived ${formatRelativeDuration(stop.startedAt)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun MapSurface(
+    context: Context,
+    iconFactory: IconFactory,
     mapStyleUrl: String,
     members: List<MapMemberState>,
     selectedMemberId: String?,
@@ -210,7 +276,6 @@ private fun MapSurface(
     onMarkerSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember {
         MapLibre.getInstance(context)
@@ -260,6 +325,8 @@ private fun MapSurface(
             update = {
                 it.getMapAsync { map ->
                     renderMap(
+                        context = context,
+                        iconFactory = iconFactory,
                         map = map,
                         members = members,
                         selectedMemberId = selectedMemberId,
@@ -272,6 +339,8 @@ private fun MapSurface(
 }
 
 private fun renderMap(
+    context: Context,
+    iconFactory: IconFactory,
     map: MapLibreMap,
     members: List<MapMemberState>,
     selectedMemberId: String?,
@@ -288,6 +357,15 @@ private fun renderMap(
         map.addMarker(
             MarkerOptions()
                 .position(position)
+                .icon(
+                    createMemberMarkerIcon(
+                        context = context,
+                        iconFactory = iconFactory,
+                        displayName = state.member.displayName,
+                        isSelected = state.member.id == selectedMemberId,
+                        isChild = state.member.isChild,
+                    ),
+                )
                 .title(
                     buildString {
                         append(state.member.displayName)
@@ -327,7 +405,7 @@ private fun renderMap(
             if (target != null) {
                 map.cameraPosition = CameraPosition.Builder()
                     .target(target)
-                    .zoom(12.0)
+                    .zoom(MaximumAutoZoom)
                     .build()
             }
         }
@@ -340,7 +418,9 @@ private fun renderMap(
                     0.0,
                     0.0,
                 )?.let { cameraPosition ->
-                    map.cameraPosition = cameraPosition
+                    map.cameraPosition = CameraPosition.Builder(cameraPosition)
+                        .zoom(MapSnapshotCalculator.clampAutoZoom(cameraPosition.zoom, MaximumAutoZoom))
+                        .build()
                 }
             }
         }
@@ -364,9 +444,67 @@ private fun formatRelativeDuration(start: Instant?): String {
     }
 }
 
+private fun formatRelativeDuration(start: String): String {
+    return runCatching { formatRelativeDuration(Instant.parse(start)) }.getOrDefault("just now")
+}
+
+private fun formatDurationSeconds(durationSeconds: Int): String {
+    val duration = Duration.ofSeconds(durationSeconds.toLong())
+    val hours = duration.toHours()
+    val minutes = duration.minusHours(hours).toMinutes()
+
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        minutes > 0 -> "${minutes}m"
+        else -> "${durationSeconds}s"
+    }
+}
+
+private fun formatStopLabel(stop: LocationStop): String {
+    return stop.label ?: formatCoordinates(stop.latitude, stop.longitude)
+}
+
 private fun formatCoordinates(latitude: Double, longitude: Double): String {
     return "${"%.4f".format(latitude)}, ${"%.4f".format(longitude)}"
 }
+
+private fun createMemberMarkerIcon(
+    context: Context,
+    iconFactory: IconFactory,
+    displayName: String,
+    isSelected: Boolean,
+    isChild: Boolean,
+) = iconFactory.fromBitmap(
+    Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
+        val canvas = Canvas(this)
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = when {
+                isSelected -> Color.parseColor("#1794C8")
+                isChild -> Color.parseColor("#D66B2D")
+                else -> Color.parseColor("#2F6A9A")
+            }
+        }
+        val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = context.resources.displayMetrics.density * 3f
+        }
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textAlign = Paint.Align.CENTER
+            textSize = context.resources.displayMetrics.density * 16f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val centerX = width / 2f
+        val centerY = height / 2f
+        val radius = width * 0.32f
+        canvas.drawCircle(centerX, centerY, radius, fillPaint)
+        canvas.drawCircle(centerX, centerY, radius, outlinePaint)
+        val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(MapSnapshotCalculator.buildInitials(displayName), centerX, baseline, textPaint)
+    },
+)
 
 private data class MapMemberState(
     val member: MemberSummary,

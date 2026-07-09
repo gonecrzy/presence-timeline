@@ -81,6 +81,34 @@ class MapSnapshotCalculatorTest {
         assertEquals(points.map(LocationPoint::observedAt), displayRoute.map(LocationPoint::observedAt))
     }
 
+    @Test
+    fun `auto zoom is capped for tight bounds`() {
+        val zoom = MapSnapshotCalculator.clampAutoZoom(proposedZoom = 16.2, maximumAutoZoom = 13.0)
+
+        assertEquals(13.0, zoom, 0.0)
+    }
+
+    @Test
+    fun `auto zoom keeps wider fit when already zoomed out`() {
+        val zoom = MapSnapshotCalculator.clampAutoZoom(proposedZoom = 10.4, maximumAutoZoom = 13.0)
+
+        assertEquals(10.4, zoom, 0.0)
+    }
+
+    @Test
+    fun `initials use the first letter of up to two words`() {
+        val initials = MapSnapshotCalculator.buildInitials("Kristi Parker")
+
+        assertEquals("KP", initials)
+    }
+
+    @Test
+    fun `initials fall back to single word names`() {
+        val initials = MapSnapshotCalculator.buildInitials("RileyPhone")
+
+        assertEquals("R", initials)
+    }
+
     private fun point(observedAt: String, latitude: Double, longitude: Double): LocationPoint {
         return LocationPoint(
             memberId = "member-1",

@@ -4,6 +4,7 @@ import com.gonecrzy.gpstrack.data.model.LocationPoint
 import java.time.Instant
 import kotlin.math.asin
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -74,6 +75,27 @@ object MapSnapshotCalculator {
         }
 
         return simplified
+    }
+
+    fun clampAutoZoom(
+        proposedZoom: Double,
+        maximumAutoZoom: Double,
+    ): Double {
+        return min(proposedZoom, maximumAutoZoom)
+    }
+
+    fun buildInitials(displayName: String): String {
+        val words = displayName
+            .trim()
+            .split(Regex("\\s+"))
+            .filter(String::isNotBlank)
+        if (words.isEmpty()) {
+            return "?"
+        }
+        return words
+            .take(2)
+            .mapNotNull { word -> word.firstOrNull()?.uppercaseChar() }
+            .joinToString("")
     }
 
     private fun distanceMeters(

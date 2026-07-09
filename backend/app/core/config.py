@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     home_assistant_bootstrap_members: list[HomeAssistantBootstrapMember] = Field(default_factory=list)
     home_assistant_ws_url: str = "ws://homeassistant.local:8123/api/websocket"
     home_assistant_access_token: str = "replace-me"
+    enable_reverse_geocoding: bool = True
+    reverse_geocode_url: str = "https://nominatim.openstreetmap.org/reverse"
+    reverse_geocode_user_agent: str = "gpstrack/0.1.0"
+    reverse_geocode_timeout_seconds: float = 5.0
 
     model_config = SettingsConfigDict(
         env_prefix="GPSTRACK_",

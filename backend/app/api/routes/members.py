@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.auth import AppPrincipal, require_app_access
 from app.core.database import get_db
-from app.schemas.location import LocationHistoryResponse, LocationPointResponse
+from app.schemas.location import (
+    LocationHistoryResponse,
+    LocationPointResponse,
+    StopListResponse,
+    StopResponse,
+)
 from app.schemas.member import DeviceResponse, DeviceUpdateRequest, MemberListResponse, MemberResponse, MemberUpdateRequest
 from app.schemas.safety import SafetyEventListResponse
 from app.schemas.timeline import TimelineItemResponse, TimelineResponse
@@ -16,6 +21,9 @@ from app.services.safety_views import SafetyViewService
 from app.services.trip_views import TripViewService
 
 router = APIRouter()
+
+DEFAULT_STOP_DWELL_RADIUS_M = 250.0
+DEFAULT_STOP_MINIMUM_DURATION = timedelta(minutes=10)
 
 
 def get_member_view_service(db=Depends(get_db)) -> MemberViewService:
@@ -119,6 +127,25 @@ def get_member_timeline(
 ) -> TimelineResponse:
     items = service.timeline(member_id, start, end)
     return TimelineResponse(items=[TimelineItemResponse.model_validate(item) for item in items])
+
+
+@router.get("/{member_id}/stops")
+def get_member_stops(
+    member_id: UUID,
+    *,
+    _: Annotated[AppPrincipal, Depends(require_app_access)],
+    service: Annotated[MemberViewService, Depends(get_member_view_service)],
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+) -> StopListResponse:
+    items = service.stops(
+        member_id,
+        start,
+        end,
+        dwell_radius_m=DEFAULT_STOP_DWELL_RADIUS_M,
+        minimum_duration=DEFAULT_STOP_MINIMUM_DURATION,
+    )
+    return StopListResponse(items=[StopResponse.model_validate(item) for item in items])
 
 
 @router.get("/{member_id}/trips")

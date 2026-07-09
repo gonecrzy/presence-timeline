@@ -7,6 +7,7 @@ import com.gonecrzy.gpstrack.data.local.PlaceEntity
 import com.gonecrzy.gpstrack.data.model.DailySummary
 import com.gonecrzy.gpstrack.data.model.DeviceSummary
 import com.gonecrzy.gpstrack.data.model.LocationPoint
+import com.gonecrzy.gpstrack.data.model.LocationStop
 import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.model.TimelineItem
@@ -21,6 +22,7 @@ import com.gonecrzy.gpstrack.data.network.MemberDto
 import com.gonecrzy.gpstrack.data.network.MemberUpdateRequestDto
 import com.gonecrzy.gpstrack.data.network.PlaceDto
 import com.gonecrzy.gpstrack.data.network.PlaceUpsertRequestDto
+import com.gonecrzy.gpstrack.data.network.StopDto
 import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
@@ -81,6 +83,10 @@ class GpsTrackRepository(
 
     suspend fun loadMemberHistory(memberId: String, start: String, end: String): List<LocationPoint> {
         return api().getMemberHistory(memberId, start, end).items.map(LocationPointDto::toDomain)
+    }
+
+    suspend fun loadMemberStops(memberId: String, start: String, end: String): List<LocationStop> {
+        return api().getMemberStops(memberId, start, end).items.map(StopDto::toDomain)
     }
 
     suspend fun refreshPlaces() {
@@ -289,5 +295,20 @@ private fun LocationPointDto.toDomain(): LocationPoint {
         accuracyM = accuracyM,
         batteryLevel = batteryLevel,
         sourceEntityId = sourceEntityId,
+    )
+}
+
+private fun StopDto.toDomain(): LocationStop {
+    return LocationStop(
+        startedAt = startedAt,
+        endedAt = endedAt,
+        durationSeconds = durationSeconds,
+        latitude = latitude,
+        longitude = longitude,
+        pointCount = pointCount,
+        placeId = placeId,
+        placeName = placeName,
+        address = address,
+        label = label,
     )
 }

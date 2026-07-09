@@ -61,14 +61,15 @@ This first milestone provides:
 - Home Assistant snapshot + event ingestion worker with auto-discovered trackers
 - Retention cleanup worker for expiring stored history
 - Family places and geofence-derived safety events
-- Derived trips and daily summaries from raw point history
+- Derived trips, stop summaries, and daily summaries from raw point history
 - Docker Compose runtime for API + PostGIS
+- Android parent app scaffold with member list, map, places, and settings flows
 
 Not implemented yet:
 
 - Real family login flow
 - Home Assistant dashboard publishing
-- Android app
+- Android MVP polish and release hardening
 
 ## Auth posture
 

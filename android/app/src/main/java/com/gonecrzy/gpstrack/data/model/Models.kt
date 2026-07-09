@@ -27,6 +27,19 @@ data class LocationPoint(
     val sourceEntityId: String?,
 )
 
+data class LocationStop(
+    val startedAt: String,
+    val endedAt: String,
+    val durationSeconds: Int,
+    val latitude: Double,
+    val longitude: Double,
+    val pointCount: Int,
+    val placeId: String?,
+    val placeName: String?,
+    val address: String?,
+    val label: String?,
+)
+
 data class PlaceSummary(
     val id: String,
     val name: String,

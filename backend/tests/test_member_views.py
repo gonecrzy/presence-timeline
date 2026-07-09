@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.services.member_views import MemberViewService
@@ -155,6 +155,15 @@ class FakeSafetyDerivation:
         ]
 
 
+class FakeReverseGeocoder:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def reverse(self, latitude: float, longitude: float) -> str | None:
+        self.calls.append((latitude, longitude))
+        return "500 Elm St, Springfield"
+
+
 def test_member_view_service_updates_member_profile(monkeypatch) -> None:
     repository = FakeMemberRepository()
     monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
@@ -216,3 +225,87 @@ def test_member_view_service_builds_unified_timeline(monkeypatch) -> None:
     assert items[0]["source_entity_id"] == "device_tracker.sam_phone"
     assert items[1]["event_type"] == "safe_zone_entered"
     assert items[2]["distance_m"] == 950.0
+
+
+def test_member_view_service_derives_stops_with_place_first_then_reverse_geocode(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0840,
+            accuracy_m=10.0,
+            battery_level=90,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 6, tzinfo=UTC),
+            latitude=37.4211,
+            longitude=-122.0841,
+            accuracy_m=10.0,
+            battery_level=89,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0841,
+            accuracy_m=10.0,
+            battery_level=88,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 30, tzinfo=UTC),
+            latitude=37.4305,
+            longitude=-122.0900,
+            accuracy_m=10.0,
+            battery_level=82,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 36, tzinfo=UTC),
+            latitude=37.4306,
+            longitude=-122.0901,
+            accuracy_m=10.0,
+            battery_level=81,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 42, tzinfo=UTC),
+            latitude=37.4305,
+            longitude=-122.0900,
+            accuracy_m=10.0,
+            battery_level=80,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+    reverse_geocoder = FakeReverseGeocoder()
+    service.reverse_geocoder = reverse_geocoder
+
+    stops = service.stops(
+        repository.member.id,
+        datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+        datetime(2026, 7, 8, 22, 0, tzinfo=UTC),
+        dwell_radius_m=250.0,
+        minimum_duration=timedelta(minutes=10),
+    )
+
+    assert len(stops) == 2
+    assert stops[0]["place_name"] == "School"
+    assert stops[0]["label"] == "School"
+    assert stops[0]["address"] is None
+    assert stops[0]["duration_seconds"] == 12 * 60
+    assert stops[1]["place_name"] is None
+    assert stops[1]["address"] == "500 Elm St, Springfield"
+    assert stops[1]["label"] == "500 Elm St, Springfield"
+    assert stops[1]["duration_seconds"] == 12 * 60
+    assert reverse_geocoder.calls == [(stops[1]["latitude"], stops[1]["longitude"])]

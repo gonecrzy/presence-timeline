@@ -16,3 +16,20 @@ class LocationPointResponse(BaseModel):
 
 class LocationHistoryResponse(BaseModel):
     items: list[LocationPointResponse]
+
+
+class StopResponse(BaseModel):
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: int
+    latitude: float
+    longitude: float
+    point_count: int
+    place_id: UUID | None = None
+    place_name: str | None = None
+    address: str | None = None
+    label: str | None = None
+
+
+class StopListResponse(BaseModel):
+    items: list[StopResponse]

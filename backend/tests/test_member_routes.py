@@ -94,6 +94,27 @@ class StubMemberViews:
             },
         ]
 
+    def stops(self, member_id, start, end, dwell_radius_m, minimum_duration):
+        assert member_id == self.member_id
+        assert start == datetime(2026, 7, 8, 20, 0, tzinfo=UTC)
+        assert end == datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
+        assert dwell_radius_m == 250.0
+        assert minimum_duration.total_seconds() == 600
+        return [
+            {
+                "started_at": "2026-07-08T20:00:00Z",
+                "ended_at": "2026-07-08T20:12:00Z",
+                "duration_seconds": 720,
+                "latitude": 37.4210,
+                "longitude": -122.0840,
+                "point_count": 3,
+                "place_id": str(uuid4()),
+                "place_name": "School",
+                "address": None,
+                "label": "School",
+            }
+        ]
+
     def set_device_ignored(self, member_id, device_id, ignored: bool):
         raise AssertionError("legacy device ignore entrypoint should not be used")
 
@@ -158,6 +179,10 @@ def test_member_routes_return_real_shapes() -> None:
             f"/api/v1/members/{stub.member_id}/timeline",
             params={"start": "2026-07-08T20:00:00Z", "end": "2026-07-08T22:00:00Z"},
         )
+        stops = client.get(
+            f"/api/v1/members/{stub.member_id}/stops",
+            params={"start": "2026-07-08T20:00:00Z", "end": "2026-07-08T22:00:00Z"},
+        )
         device = client.patch(
             f"/api/v1/members/{stub.member_id}/devices/{stub.device_id}",
             json={"label": "Family Phone", "ignored": True},
@@ -179,6 +204,9 @@ def test_member_routes_return_real_shapes() -> None:
             "safety_event",
             "trip",
         ]
+        assert stops.status_code == 200
+        assert stops.json()["items"][0]["label"] == "School"
+        assert stops.json()["items"][0]["duration_seconds"] == 720
         assert device.status_code == 200
         assert device.json()["ignored"] is True
         assert device.json()["label"] == "Family Phone"
