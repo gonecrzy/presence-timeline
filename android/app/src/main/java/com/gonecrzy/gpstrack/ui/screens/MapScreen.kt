@@ -46,6 +46,8 @@ import com.gonecrzy.gpstrack.data.model.LocationStop
 import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.data.settings.AppPreferences
+import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
+import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
 import java.time.Duration
 import java.time.Instant
@@ -64,6 +66,7 @@ private const val RouteWindowHours = 24L
 private const val DwellRadiusMeters = 250.0
 private const val MinimumDisplaySegmentMeters = 25.0
 private const val MaximumAutoZoom = 12.0
+private const val MarkerGroupingRadiusMeters = 40.0
 
 @Composable
 fun MapScreen(
@@ -180,14 +183,12 @@ fun MapScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
-                        currentStop?.let { stop ->
-                            Text(
-                                formatStopLabel(stop),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
                         Text(
-                            "Last update ${selectedLatestLocation.observedAt}",
+                            currentStop?.let(::formatStopLabel) ?: (selectedMember.currentLocationLabel ?: "Location updating"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            "Last Update ${formatPhoneDateTime(selectedLatestLocation.observedAt)}",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -224,13 +225,15 @@ fun MapScreen(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        state.latestLocation?.let { latest ->
+                        state.latestLocation?.let {
                             if (isSelected) {
                                 val currentLabel = currentStop?.let(::formatStopLabel)
-                                    ?: formatCoordinates(latest.latitude, latest.longitude)
+                                    ?: state.member.currentLocationLabel
+                                    ?: "Location updating"
                                 "Current: $currentLabel · Arrived ${formatRelativeDuration(dwellStart)}"
                             } else {
-                                "Current: ${formatCoordinates(latest.latitude, latest.longitude)} · Tap to load route"
+                                val currentLabel = state.member.currentLocationLabel ?: "Location updating"
+                                "Current: $currentLabel · Tap to load route"
                             }
                         } ?: "No current location available",
                         style = MaterialTheme.typography.bodySmall,
@@ -362,28 +365,56 @@ private fun renderMap(
     val boundsBuilder = LatLngBounds.Builder()
     var pointCount = 0
 
-    members.forEach { state ->
-        val latest = state.latestLocation ?: return@forEach
-        val position = LatLng(latest.latitude, latest.longitude)
+    val markerClusters = MapSnapshotCalculator.groupMarkerPoints(
+        points = members.mapNotNull { state ->
+            state.latestLocation?.let { latest ->
+                MapSnapshotCalculator.MarkerPoint(
+                    item = state,
+                    latitude = latest.latitude,
+                    longitude = latest.longitude,
+                )
+            }
+        },
+        groupingRadiusMeters = MarkerGroupingRadiusMeters,
+    )
+
+    markerClusters.forEach { cluster ->
+        val position = LatLng(cluster.latitude, cluster.longitude)
+        val clusterIsSelected = cluster.items.any { it.member.id == selectedMemberId }
+        val isSingleMember = cluster.items.size == 1
+        val representative = cluster.items.first()
         map.addMarker(
             MarkerOptions()
                 .position(position)
                 .icon(
-                    createMemberMarkerIcon(
-                        context = context,
-                        iconFactory = iconFactory,
-                        displayName = state.member.displayName,
-                        isSelected = state.member.id == selectedMemberId,
-                        isChild = state.member.isChild,
-                    ),
-                )
-                .title(
-                    buildString {
-                        append(state.member.displayName)
-                        if (state.member.id == selectedMemberId) append(" · active")
+                    if (isSingleMember) {
+                        createMemberMarkerIcon(
+                            context = context,
+                            iconFactory = iconFactory,
+                            displayName = representative.member.displayName,
+                            isSelected = clusterIsSelected,
+                            isChild = representative.member.isChild,
+                        )
+                    } else {
+                        createClusterMarkerIcon(
+                            context = context,
+                            iconFactory = iconFactory,
+                            count = cluster.items.size,
+                            isSelected = clusterIsSelected,
+                        )
                     },
                 )
-                .snippet(state.member.id),
+                .title(
+                    if (isSingleMember) {
+                        buildString {
+                            append(representative.member.displayName)
+                            if (clusterIsSelected) append(" · active")
+                        }
+                    } else {
+                        "${cluster.items.size} family members: ${cluster.items.joinToString { it.member.displayName }}"
+                    },
+                )
+                .snippet(if (isSingleMember) representative.member.id else null),
         )
         boundsBuilder.include(position)
         pointCount += 1
@@ -410,9 +441,8 @@ private fun renderMap(
         }
 
         pointCount == 1 -> {
-            val target = members.firstNotNullOfOrNull { state ->
-                state.latestLocation?.let { LatLng(it.latitude, it.longitude) }
-            } ?: routePoints.lastOrNull()?.let { LatLng(it.latitude, it.longitude) }
+            val target = markerClusters.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
+                ?: routePoints.lastOrNull()?.let { LatLng(it.latitude, it.longitude) }
             if (target != null) {
                 map.cameraPosition = CameraPosition.Builder()
                     .target(target)
@@ -459,19 +489,6 @@ private fun formatRelativeDuration(start: String): String {
     return runCatching { formatRelativeDuration(Instant.parse(start)) }.getOrDefault("just now")
 }
 
-private fun formatDurationSeconds(durationSeconds: Int): String {
-    val duration = Duration.ofSeconds(durationSeconds.toLong())
-    val hours = duration.toHours()
-    val minutes = duration.minusHours(hours).toMinutes()
-
-    return when {
-        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
-        hours > 0 -> "${hours}h"
-        minutes > 0 -> "${minutes}m"
-        else -> "${durationSeconds}s"
-    }
-}
-
 private fun formatStopLabel(stop: LocationStop): String {
     return stop.label ?: formatCoordinates(stop.latitude, stop.longitude)
 }
@@ -514,6 +531,38 @@ private fun createMemberMarkerIcon(
         canvas.drawCircle(centerX, centerY, radius, outlinePaint)
         val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
         canvas.drawText(MapSnapshotCalculator.buildInitials(displayName), centerX, baseline, textPaint)
+    },
+)
+
+private fun createClusterMarkerIcon(
+    context: Context,
+    iconFactory: IconFactory,
+    count: Int,
+    isSelected: Boolean,
+) = iconFactory.fromBitmap(
+    Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
+        val canvas = Canvas(this)
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (isSelected) Color.parseColor("#1794C8") else Color.parseColor("#42566B")
+        }
+        val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = context.resources.displayMetrics.density * 3f
+        }
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textAlign = Paint.Align.CENTER
+            textSize = context.resources.displayMetrics.density * 18f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val centerX = width / 2f
+        val centerY = height / 2f
+        val radius = width * 0.32f
+        canvas.drawCircle(centerX, centerY, radius, fillPaint)
+        canvas.drawCircle(centerX, centerY, radius, outlinePaint)
+        val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(count.toString(), centerX, baseline, textPaint)
     },
 )
 

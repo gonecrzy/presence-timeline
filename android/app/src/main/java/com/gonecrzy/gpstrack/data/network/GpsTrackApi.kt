@@ -76,6 +76,9 @@ interface GpsTrackApi {
     @GET("api/v1/places")
     suspend fun listPlaces(): PlaceListResponseDto
 
+    @GET("api/v1/places/search")
+    suspend fun searchPlaces(@Query("q") query: String): PlaceSearchListResponseDto
+
     @POST("api/v1/places")
     suspend fun createPlace(@Body payload: PlaceUpsertRequestDto): PlaceDto
 

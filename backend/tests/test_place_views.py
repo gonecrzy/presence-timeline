@@ -88,6 +88,18 @@ class FakePlaceRepository:
         self.committed = True
 
 
+class FakeSearchGeocoder:
+    def search(self, query: str):
+        assert query == "129 Sundance Ct"
+        return [
+            {
+                "label": "129 Sundance Ct, Sangaree",
+                "latitude": 33.0311,
+                "longitude": -80.1313,
+            }
+        ]
+
+
 def test_place_view_service_creates_place(monkeypatch) -> None:
     repository = FakePlaceRepository()
     monkeypatch.setattr("app.services.place_views.LocationRepository", lambda db: repository)
@@ -139,3 +151,21 @@ def test_place_view_service_deletes_place(monkeypatch) -> None:
 
     assert service.delete_place("family-alpha", repository.place.id) is True
     assert repository.committed is True
+
+
+def test_place_view_service_searches_addresses(monkeypatch) -> None:
+    repository = FakePlaceRepository()
+    monkeypatch.setattr("app.services.place_views.LocationRepository", lambda db: repository)
+
+    service = PlaceViewService(db=None)
+    service.search_geocoder = FakeSearchGeocoder()
+
+    results = service.search_addresses("129 Sundance Ct")
+
+    assert results == [
+        {
+            "label": "129 Sundance Ct, Sangaree",
+            "latitude": 33.0311,
+            "longitude": -80.1313,
+        }
+    ]

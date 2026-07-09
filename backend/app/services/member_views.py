@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from app.repositories.location_repository import LocationRepository
-from app.services.places import PlaceMatcher, ReverseGeocoder
+from app.services.places import PlaceMatcher, ReverseGeocoder, choose_address_granularity
 from app.services.safety import SafetyDerivationService
 from app.services.stops import derive_stops
 from app.services.trip_derivation import TripDerivationService
@@ -24,6 +24,7 @@ class MemberViewService:
                 "display_name": member.display_name,
                 "is_child": member.is_child,
                 "last_seen_at": member.last_seen_at,
+                "current_location_label": self._current_location_label(member),
                 "devices": [_serialize_device(device) for device in member.devices],
             }
             for member in members
@@ -202,6 +203,41 @@ class MemberViewService:
 
         return sorted(items, key=lambda item: item["observed_at"])
 
+    def _current_location_label(self, member) -> str | None:
+        latest_point = self.repository.get_latest_point_for_member(member.id)
+        if latest_point is None:
+            return None
+
+        history = self.repository.list_member_history(
+            member.id,
+            latest_point.observed_at - timedelta(days=1),
+            latest_point.observed_at,
+        )
+        places = _serialize_places(self.repository.list_places_for_family_id(self.repository.get_member(member.id).family_id))
+        stop_items = _build_stop_items(
+            points=history,
+            places=places,
+            place_matcher=self.place_matcher,
+            reverse_geocoder=self.reverse_geocoder,
+            dwell_radius_m=250.0,
+            minimum_duration=timedelta(minutes=10),
+        )
+        current_stop = next((stop for stop in reversed(stop_items) if stop["is_current"]), None)
+        if current_stop is not None:
+            return current_stop["label"]
+
+        granularity = choose_address_granularity(
+            accuracy_m=latest_point.accuracy_m,
+            duration_seconds=None,
+            point_count=None,
+            moving=True,
+        )
+        return self.reverse_geocoder.reverse(
+            latest_point.latitude,
+            latest_point.longitude,
+            granularity=granularity,
+        )
+
 
 def _serialize_point(point) -> dict:
     return {
@@ -270,7 +306,21 @@ def _build_stop_items(
     for index, stop in enumerate(derived_stops):
         matched_place = place_matcher.match(places, stop.latitude, stop.longitude)
         place_name = matched_place["name"] if matched_place is not None else None
-        address = None if place_name is not None else reverse_geocoder.reverse(stop.latitude, stop.longitude)
+        representative_point = next(
+            (point for point in reversed(points) if point.observed_at == stop.ended_at),
+            None,
+        )
+        granularity = choose_address_granularity(
+            accuracy_m=representative_point.accuracy_m if representative_point is not None else None,
+            duration_seconds=stop.duration_seconds,
+            point_count=stop.point_count,
+            moving=False,
+        )
+        address = (
+            None
+            if place_name is not None
+            else reverse_geocoder.reverse(stop.latitude, stop.longitude, granularity=granularity)
+        )
         items.append(
             {
                 "started_at": stop.started_at,

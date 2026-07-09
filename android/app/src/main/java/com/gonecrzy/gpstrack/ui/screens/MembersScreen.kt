@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 
 @Composable
 fun MembersScreen(
@@ -72,12 +73,12 @@ private fun MemberCard(
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "Last seen: ${member.lastSeenAt ?: "No recent update"}",
+                "Last Update: ${formatPhoneDateTime(member.lastSeenAt)}",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            member.devices.firstOrNull()?.let { device ->
+            member.currentLocationLabel?.let { currentLocation ->
                 Text(
-                    "Device: ${device.label ?: device.externalId}",
+                    "Current: $currentLocation",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

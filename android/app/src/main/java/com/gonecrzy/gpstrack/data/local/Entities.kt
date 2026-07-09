@@ -9,6 +9,7 @@ data class MemberEntity(
     val displayName: String,
     val isChild: Boolean,
     val lastSeenAt: String?,
+    val currentLocationLabel: String?,
     val devicesJson: String,
 )
 

@@ -14,6 +14,7 @@ data class MemberSummary(
     val displayName: String,
     val isChild: Boolean,
     val lastSeenAt: String?,
+    val currentLocationLabel: String?,
     val devices: List<DeviceSummary>,
 )
 
@@ -48,6 +49,12 @@ data class PlaceSummary(
     val longitude: Double,
     val radiusM: Double,
     val isSafeZone: Boolean,
+)
+
+data class PlaceSearchCandidate(
+    val label: String,
+    val latitude: Double,
+    val longitude: Double,
 )
 
 data class TimelineItem(

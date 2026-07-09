@@ -9,6 +9,7 @@ data class MemberDto(
     @Json(name = "display_name") val displayName: String,
     @Json(name = "is_child") val isChild: Boolean,
     @Json(name = "last_seen_at") val lastSeenAt: String?,
+    @Json(name = "current_location_label") val currentLocationLabel: String?,
     val devices: List<DeviceDto>,
 )
 
@@ -60,6 +61,14 @@ data class DeviceUpdateRequestDto(
 )
 
 data class PlaceListResponseDto(val items: List<PlaceDto>)
+
+data class PlaceSearchListResponseDto(val items: List<PlaceSearchCandidateDto>)
+
+data class PlaceSearchCandidateDto(
+    val label: String,
+    val latitude: Double,
+    val longitude: Double,
+)
 
 data class PlaceDto(
     val id: String,

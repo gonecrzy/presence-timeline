@@ -9,6 +9,7 @@ import com.gonecrzy.gpstrack.data.model.DeviceSummary
 import com.gonecrzy.gpstrack.data.model.LocationPoint
 import com.gonecrzy.gpstrack.data.model.LocationStop
 import com.gonecrzy.gpstrack.data.model.MemberSummary
+import com.gonecrzy.gpstrack.data.model.PlaceSearchCandidate
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.model.TimelineItem
 import com.gonecrzy.gpstrack.data.model.TripRoute
@@ -21,6 +22,7 @@ import com.gonecrzy.gpstrack.data.network.LocationPointDto
 import com.gonecrzy.gpstrack.data.network.MemberDto
 import com.gonecrzy.gpstrack.data.network.MemberUpdateRequestDto
 import com.gonecrzy.gpstrack.data.network.PlaceDto
+import com.gonecrzy.gpstrack.data.network.PlaceSearchCandidateDto
 import com.gonecrzy.gpstrack.data.network.PlaceUpsertRequestDto
 import com.gonecrzy.gpstrack.data.network.StopDto
 import com.gonecrzy.gpstrack.data.settings.AppPreferences
@@ -49,6 +51,7 @@ class GpsTrackRepository(
                     displayName = entity.displayName,
                     isChild = entity.isChild,
                     lastSeenAt = entity.lastSeenAt,
+                    currentLocationLabel = entity.currentLocationLabel,
                     devices = memberDevicesAdapter.fromJson(entity.devicesJson).orEmpty(),
                 )
             }
@@ -120,10 +123,15 @@ class GpsTrackRepository(
                     displayName = currentMember.displayName,
                     isChild = currentMember.isChild,
                     lastSeenAt = currentMember.lastSeenAt,
+                    currentLocationLabel = currentMember.currentLocationLabel,
                     devicesJson = memberDevicesAdapter.toJson(mergedDevices),
                 ),
             ),
         )
+    }
+
+    suspend fun searchPlaces(query: String): List<PlaceSearchCandidate> {
+        return api().searchPlaces(query).items.map(PlaceSearchCandidateDto::toDomain)
     }
 
     suspend fun createPlace(
@@ -261,6 +269,7 @@ class GpsTrackRepository(
             displayName = dto.displayName,
             isChild = dto.isChild,
             lastSeenAt = dto.lastSeenAt,
+            currentLocationLabel = dto.currentLocationLabel,
             devicesJson = memberDevicesAdapter.toJson(dto.devices.map(DeviceDto::toDomain)),
         )
     }
@@ -286,6 +295,14 @@ private fun DeviceDto.toDomain(): DeviceSummary {
         label = label,
         ignored = ignored,
         lastSeenAt = lastSeenAt,
+    )
+}
+
+private fun PlaceSearchCandidateDto.toDomain(): PlaceSearchCandidate {
+    return PlaceSearchCandidate(
+        label = label,
+        latitude = latitude,
+        longitude = longitude,
     )
 }
 

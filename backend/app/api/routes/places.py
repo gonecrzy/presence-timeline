@@ -1,11 +1,17 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.core.auth import AppPrincipal, require_app_access
 from app.core.database import get_db
-from app.schemas.place import PlaceListResponse, PlaceResponse, PlaceUpsertRequest
+from app.schemas.place import (
+    PlaceListResponse,
+    PlaceResponse,
+    PlaceSearchListResponse,
+    PlaceSearchResultResponse,
+    PlaceUpsertRequest,
+)
 from app.services.place_views import PlaceViewService
 
 router = APIRouter()
@@ -22,6 +28,16 @@ def list_places(
     service: Annotated[PlaceViewService, Depends(get_place_view_service)],
 ) -> PlaceListResponse:
     return PlaceListResponse(items=service.list_places(principal.family_slug))
+
+
+@router.get("/search")
+def search_places(
+    *,
+    _: Annotated[AppPrincipal, Depends(require_app_access)],
+    service: Annotated[PlaceViewService, Depends(get_place_view_service)],
+    q: str = Query(..., min_length=2),
+) -> PlaceSearchListResponse:
+    return PlaceSearchListResponse(items=[PlaceSearchResultResponse.model_validate(item) for item in service.search_addresses(q)])
 
 
 @router.post("")

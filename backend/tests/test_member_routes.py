@@ -23,6 +23,7 @@ class StubMemberViews:
                 "display_name": "Sam",
                 "is_child": True,
                 "last_seen_at": "2026-07-08T21:00:00Z",
+                "current_location_label": "School",
                 "devices": [
                     {
                         "id": str(self.device_id),
@@ -190,6 +191,7 @@ def test_member_routes_return_real_shapes() -> None:
 
         assert members.status_code == 200
         assert members.json()["items"][0]["display_name"] == "Sam"
+        assert members.json()["items"][0]["current_location_label"] == "School"
         assert members.json()["items"][0]["devices"][0]["external_id"] == "device_tracker.sam_phone"
         assert updated_member.status_code == 200
         assert updated_member.json()["display_name"] == "Samantha"

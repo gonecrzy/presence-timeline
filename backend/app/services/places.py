@@ -36,7 +36,7 @@ class ReverseGeocoder:
             settings.reverse_geocode_timeout_seconds if timeout_seconds is None else timeout_seconds
         )
 
-    def reverse(self, latitude: float, longitude: float) -> str | None:
+    def reverse(self, latitude: float, longitude: float, *, granularity: str = "full") -> str | None:
         if not self.enabled:
             return None
 
@@ -59,14 +59,99 @@ class ReverseGeocoder:
         except httpx.HTTPError:
             return None
 
-        return format_reverse_geocode_label(response.json())
+        return format_reverse_geocode_label(response.json(), granularity=granularity)
 
 
-def format_reverse_geocode_label(payload: dict) -> str | None:
+class SearchGeocoder:
+    def __init__(
+        self,
+        *,
+        enabled: bool | None = None,
+        endpoint: str | None = None,
+        user_agent: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> None:
+        settings = get_settings()
+        self.enabled = settings.enable_reverse_geocoding if enabled is None else enabled
+        self.endpoint = settings.search_geocode_url if endpoint is None else endpoint
+        self.user_agent = settings.reverse_geocode_user_agent if user_agent is None else user_agent
+        self.timeout_seconds = (
+            settings.reverse_geocode_timeout_seconds if timeout_seconds is None else timeout_seconds
+        )
+
+    def search(self, query: str) -> list[dict]:
+        if not self.enabled or not query.strip():
+            return []
+
+        try:
+            with httpx.Client(
+                timeout=self.timeout_seconds,
+                headers={"User-Agent": self.user_agent},
+            ) as client:
+                response = client.get(
+                    self.endpoint,
+                    params={
+                        "format": "jsonv2",
+                        "q": query,
+                        "limit": 5,
+                        "addressdetails": 1,
+                    },
+                )
+                response.raise_for_status()
+        except httpx.HTTPError:
+            return []
+
+        results = []
+        for item in response.json():
+            label = format_reverse_geocode_label(item) or item.get("display_name")
+            latitude = item.get("lat")
+            longitude = item.get("lon")
+            if label is None or latitude is None or longitude is None:
+                continue
+            results.append(
+                {
+                    "label": label,
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                }
+            )
+        return results
+
+
+def choose_address_granularity(
+    *,
+    accuracy_m: float | None,
+    duration_seconds: int | None = None,
+    point_count: int | None = None,
+    moving: bool = False,
+) -> str:
+    if moving:
+        if accuracy_m is not None and accuracy_m <= 60.0:
+            return "street"
+        return "locality"
+
+    if (
+        accuracy_m is not None
+        and accuracy_m <= 10.0
+        and (duration_seconds or 0) >= 10 * 60
+        and (point_count or 0) >= 3
+    ):
+        return "full"
+    if (
+        accuracy_m is not None
+        and accuracy_m <= 25.0
+        and (duration_seconds or 0) >= 10 * 60
+        and (point_count or 0) >= 2
+    ):
+        return "block"
+    if accuracy_m is None or accuracy_m <= 120.0:
+        return "street"
+    return "locality"
+
+
+def format_reverse_geocode_label(payload: dict, *, granularity: str = "full") -> str | None:
     address = payload.get("address") or {}
-    street_bits = [address.get("house_number"), address.get("road") or address.get("pedestrian")]
-    street = " ".join(bit for bit in street_bits if bit)
-
+    road = address.get("road") or address.get("pedestrian")
     locality = (
         address.get("suburb")
         or address.get("neighbourhood")
@@ -77,10 +162,43 @@ def format_reverse_geocode_label(payload: dict) -> str | None:
     )
     region = address.get("state")
     postcode = address.get("postcode")
+    house_number = address.get("house_number")
+
+    if granularity == "locality":
+        parts = [locality, region]
+        label = ", ".join(part for part in parts if part)
+        return label or payload.get("display_name")
+
+    if granularity == "street":
+        parts = [road, locality]
+        label = ", ".join(part for part in parts if part)
+        return label or payload.get("display_name")
+
+    if granularity == "block":
+        block = _house_number_block_label(house_number, road)
+        parts = [block, locality]
+        label = ", ".join(part for part in parts if part)
+        return label or format_reverse_geocode_label(payload, granularity="street")
+
+    street_bits = [house_number, road]
+    street = " ".join(bit for bit in street_bits if bit)
 
     parts = [street or None, locality, " ".join(bit for bit in [region, postcode] if bit) or None]
     label = ", ".join(part for part in parts if part)
     return label or payload.get("display_name")
+
+
+def _house_number_block_label(house_number: str | None, road: str | None) -> str | None:
+    if road is None:
+        return None
+    try:
+        number = int("".join(char for char in (house_number or "") if char.isdigit()))
+    except ValueError:
+        number = None
+    if number is None:
+        return road
+    block_start = (number // 100) * 100
+    return f"{block_start} block of {road}"
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

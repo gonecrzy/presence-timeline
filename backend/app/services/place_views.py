@@ -1,9 +1,11 @@
 from app.repositories.location_repository import LocationRepository
+from app.services.places import SearchGeocoder
 
 
 class PlaceViewService:
     def __init__(self, db) -> None:
         self.repository = LocationRepository(db)
+        self.search_geocoder = SearchGeocoder()
 
     def list_places(self, family_slug: str) -> list[dict]:
         places = self.repository.list_places_for_family_slug(family_slug)
@@ -68,6 +70,9 @@ class PlaceViewService:
             return False
         self.repository.commit()
         return True
+
+    def search_addresses(self, query: str) -> list[dict]:
+        return self.search_geocoder.search(query)
 
 
 def _serialize_place(place) -> dict:

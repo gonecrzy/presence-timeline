@@ -36,13 +36,12 @@ import com.gonecrzy.gpstrack.data.model.TimelineItem
 import com.gonecrzy.gpstrack.data.model.TripRoute
 import com.gonecrzy.gpstrack.data.model.TripSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
-import java.time.Duration
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
+import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
+import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
+import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTimeRange
 import kotlinx.coroutines.launch
 
 @Composable
@@ -143,8 +142,8 @@ fun MemberDetailScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${route.distanceM.toInt()} m across ${route.pointCount} points")
-                    Text("Started: ${route.startedAt}")
-                    Text("Ended: ${route.endedAt ?: "In progress"}")
+                    Text("Started: ${formatPhoneDateTime(route.startedAt)}")
+                    Text("Ended: ${route.endedAt?.let(::formatPhoneDateTime) ?: "In progress"}")
                 }
             },
         )
@@ -163,7 +162,10 @@ fun MemberDetailScreen(
                         if (member?.isChild == true) "Child profile" else "Parent profile",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    Text(member?.lastSeenAt ?: "No recent update", style = MaterialTheme.typography.bodySmall)
+                    member?.currentLocationLabel?.let { locationLabel ->
+                        Text(locationLabel, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text("Last Update: ${formatPhoneDateTime(member?.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { editingProfile = true },
@@ -212,7 +214,7 @@ fun MemberDetailScreen(
                             if (device.ignored) "Ignored for tracking" else "Tracked in family view",
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        Text(device.lastSeenAt ?: "No recent device update", style = MaterialTheme.typography.bodySmall)
+                        Text("Last Update: ${formatPhoneDateTime(device.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
                         TextButton(
                             onClick = { editingDevice = device },
                             enabled = !isSaving,
@@ -242,7 +244,7 @@ fun MemberDetailScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${trip.distanceM.toInt()} m", style = MaterialTheme.typography.titleMedium)
-                        Text("${trip.startedAt} -> ${trip.endedAt ?: "In progress"}", style = MaterialTheme.typography.bodySmall)
+                        Text(formatPhoneDateTimeRange(trip.startedAt, trip.endedAt), style = MaterialTheme.typography.bodySmall)
                         Text("Tap for route payload", style = MaterialTheme.typography.labelSmall)
                     }
                 }
@@ -292,17 +294,17 @@ private fun formatTimelineWhen(item: TimelineItem): String {
             val start = item.startedAt ?: item.observedAt
             val end = item.endedAt
             if (item.isCurrent == true) {
-                "Since ${formatTimelineTimestamp(start)}"
+                "Since ${formatPhoneDateTime(start)}"
             } else {
-                "${formatTimelineTimestamp(start)} to ${formatTimelineTimestamp(end)}"
+                formatPhoneDateTimeRange(start, end)
             }
         }
         "trip" -> {
             val start = item.startedAt ?: item.observedAt
             val end = item.endedAt
-            "${formatTimelineTimestamp(start)} to ${formatTimelineTimestamp(end)}"
+            formatPhoneDateTimeRange(start, end)
         }
-        else -> formatTimelineTimestamp(item.observedAt)
+        else -> formatPhoneDateTime(item.observedAt)
     }
 }
 
@@ -319,35 +321,6 @@ private fun formatTimelineCoordinates(item: TimelineItem): String {
     val latitude = item.latitude ?: 0.0
     val longitude = item.longitude ?: 0.0
     return "${"%.4f".format(latitude)}, ${"%.4f".format(longitude)}"
-}
-
-private fun formatTimelineTimestamp(value: String?): String {
-    if (value == null) {
-        return "Unknown time"
-    }
-    return runCatching {
-        TimelineFormatter.format(Instant.parse(value))
-    }.getOrDefault(value)
-}
-
-private fun formatDurationSeconds(durationSeconds: Int): String {
-    val duration = Duration.ofSeconds(durationSeconds.toLong())
-    val hours = duration.toHours()
-    val minutes = duration.minusHours(hours).toMinutes()
-
-    return when {
-        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
-        hours > 0 -> "${hours}h"
-        minutes > 0 -> "${minutes}m"
-        else -> "${durationSeconds}s"
-    }
-}
-
-private object TimelineFormatter {
-    private val formatter = DateTimeFormatter.ofPattern("MMM d, h:mm a")
-        .withZone(ZoneId.systemDefault())
-
-    fun format(value: Instant): String = formatter.format(value)
 }
 
 @Composable

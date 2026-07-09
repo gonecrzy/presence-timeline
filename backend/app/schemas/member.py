@@ -18,6 +18,7 @@ class MemberResponse(BaseModel):
     display_name: str
     is_child: bool
     last_seen_at: datetime | None = None
+    current_location_label: str | None = None
     devices: list[DeviceResponse] = Field(default_factory=list)
 
 

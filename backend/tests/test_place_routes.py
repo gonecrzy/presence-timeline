@@ -69,6 +69,16 @@ class StubPlaceViews:
         assert place_id == self.place_id
         return True
 
+    def search_addresses(self, query: str):
+        assert query == "129 Sundance Ct"
+        return [
+            {
+                "label": "129 Sundance Ct, Sangaree",
+                "latitude": 33.0311,
+                "longitude": -80.1313,
+            }
+        ]
+
 
 def test_places_route_returns_family_places() -> None:
     stub = StubPlaceViews()
@@ -98,6 +108,7 @@ def test_places_route_returns_family_places() -> None:
             },
         )
         deleted = client.delete(f"/api/v1/places/{stub.place_id}")
+        searched = client.get("/api/v1/places/search", params={"q": "129 Sundance Ct"})
 
         assert response.status_code == 200
         assert response.json()["items"][0]["name"] == "School"
@@ -108,5 +119,7 @@ def test_places_route_returns_family_places() -> None:
         assert updated.json()["name"] == "School West"
         assert updated.json()["is_safe_zone"] is False
         assert deleted.status_code == 204
+        assert searched.status_code == 200
+        assert searched.json()["items"][0]["label"] == "129 Sundance Ct, Sangaree"
     finally:
         app.dependency_overrides.clear()

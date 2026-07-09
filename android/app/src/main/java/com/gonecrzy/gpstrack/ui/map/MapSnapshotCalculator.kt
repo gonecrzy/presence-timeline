@@ -12,6 +12,18 @@ import kotlin.math.sqrt
 object MapSnapshotCalculator {
     private const val MaximumDisplayAccuracyMeters = 50.0
 
+    data class MarkerPoint<T>(
+        val item: T,
+        val latitude: Double,
+        val longitude: Double,
+    )
+
+    data class MarkerCluster<T>(
+        val items: List<T>,
+        val latitude: Double,
+        val longitude: Double,
+    )
+
     fun findDwellStart(
         points: List<LocationPoint>,
         radiusMeters: Double,
@@ -113,6 +125,43 @@ object MapSnapshotCalculator {
             .joinToString("")
     }
 
+    fun <T> groupMarkerPoints(
+        points: List<MarkerPoint<T>>,
+        groupingRadiusMeters: Double,
+    ): List<MarkerCluster<T>> {
+        val clusters = mutableListOf<MutableMarkerCluster<T>>()
+
+        points.forEach { point ->
+            val existing = clusters.firstOrNull { cluster ->
+                distanceMeters(
+                    cluster.latitude,
+                    cluster.longitude,
+                    point.latitude,
+                    point.longitude,
+                ) <= groupingRadiusMeters
+            }
+            if (existing == null) {
+                clusters += MutableMarkerCluster(
+                    items = mutableListOf(point.item),
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                )
+            } else {
+                existing.items += point.item
+                existing.latitude = (existing.latitude * (existing.items.size - 1) + point.latitude) / existing.items.size
+                existing.longitude = (existing.longitude * (existing.items.size - 1) + point.longitude) / existing.items.size
+            }
+        }
+
+        return clusters.map { cluster ->
+            MarkerCluster(
+                items = cluster.items.toList(),
+                latitude = cluster.latitude,
+                longitude = cluster.longitude,
+            )
+        }
+    }
+
     private fun filterDisplayPoints(points: List<LocationPoint>): List<LocationPoint> {
         if (points.isEmpty()) {
             return emptyList()
@@ -154,4 +203,10 @@ object MapSnapshotCalculator {
         val angularDistance = 2 * asin(sqrt(haversine))
         return earthRadiusMeters * angularDistance
     }
+
+    private data class MutableMarkerCluster<T>(
+        val items: MutableList<T>,
+        var latitude: Double,
+        var longitude: Double,
+    )
 }

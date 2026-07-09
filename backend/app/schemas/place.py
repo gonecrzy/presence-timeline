@@ -17,6 +17,16 @@ class PlaceListResponse(BaseModel):
     items: list[PlaceResponse]
 
 
+class PlaceSearchResultResponse(BaseModel):
+    label: str
+    latitude: float
+    longitude: float
+
+
+class PlaceSearchListResponse(BaseModel):
+    items: list[PlaceSearchResultResponse]
+
+
 class PlaceUpsertRequest(BaseModel):
     name: str
     place_type: str | None = None

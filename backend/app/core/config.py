@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     home_assistant_access_token: str = "replace-me"
     enable_reverse_geocoding: bool = True
     reverse_geocode_url: str = "https://nominatim.openstreetmap.org/reverse"
+    search_geocode_url: str = "https://nominatim.openstreetmap.org/search"
     reverse_geocode_user_agent: str = "gpstrack/0.1.0"
     reverse_geocode_timeout_seconds: float = 5.0
 

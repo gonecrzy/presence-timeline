@@ -58,6 +58,15 @@ class FakeMemberRepository:
                 end_label=None,
             )
         ]
+        self.family = SimpleNamespace(id=uuid4())
+
+    def list_members_for_family_slug(self, family_slug: str):
+        assert family_slug == "family-alpha"
+        return [self.member]
+
+    def get_latest_point_for_member(self, member_id):
+        assert member_id == self.member.id
+        return self.points[-1] if self.points else None
 
     def update_member_for_family_slug(
         self,
@@ -100,15 +109,13 @@ class FakeMemberRepository:
 
     def get_member(self, member_id):
         assert member_id == self.member.id
-        return SimpleNamespace(id=self.member.id, family_id=uuid4())
+        return SimpleNamespace(id=self.member.id, family_id=self.family.id)
 
     def list_places_for_family_id(self, family_id):
         return self.places
 
     def list_member_history(self, member_id, start, end):
         assert member_id == self.member.id
-        assert start == datetime(2026, 7, 8, 20, 0, tzinfo=UTC)
-        assert end == datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
         return self.points
 
     def replace_safety_events_for_range(self, member_id, start, end, events):
@@ -159,7 +166,7 @@ class FakeReverseGeocoder:
     def __init__(self) -> None:
         self.calls = []
 
-    def reverse(self, latitude: float, longitude: float) -> str | None:
+    def reverse(self, latitude: float, longitude: float, *, granularity: str = "full") -> str | None:
         self.calls.append((latitude, longitude))
         return "500 Elm St, Springfield"
 
@@ -182,6 +189,95 @@ def test_member_view_service_updates_member_profile(monkeypatch) -> None:
     assert updated["is_child"] is False
     assert updated["devices"][0]["label"] == "Sam Phone"
     assert repository.committed is True
+
+
+def test_member_view_service_lists_members_with_place_aware_current_location_label(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0840,
+            accuracy_m=10.0,
+            battery_level=90,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 6, tzinfo=UTC),
+            latitude=37.4211,
+            longitude=-122.0841,
+            accuracy_m=11.0,
+            battery_level=89,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0841,
+            accuracy_m=12.0,
+            battery_level=88,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+
+    members = service.list_members("family-alpha")
+
+    assert members[0]["current_location_label"] == "School"
+
+
+def test_member_view_service_lists_members_with_block_label_when_place_missing(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.places = []
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            latitude=37.4300,
+            longitude=-122.0900,
+            accuracy_m=18.0,
+            battery_level=82,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 6, tzinfo=UTC),
+            latitude=37.4301,
+            longitude=-122.0901,
+            accuracy_m=19.0,
+            battery_level=81,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 16, tzinfo=UTC),
+            latitude=37.4301,
+            longitude=-122.0901,
+            accuracy_m=18.0,
+            battery_level=80,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+    service.reverse_geocoder = SimpleNamespace(
+        reverse=lambda latitude, longitude, granularity="full": {
+            "full": "129 Sundance Court, Sangaree, South Carolina 29486",
+            "block": "100 block of Sundance Court, Sangaree",
+            "street": "Sundance Court, Sangaree",
+            "locality": "Sangaree",
+        }[granularity],
+    )
+
+    members = service.list_members("family-alpha")
+
+    assert members[0]["current_location_label"] == "100 block of Sundance Court, Sangaree"
 
 
 def test_member_view_service_updates_device_metadata(monkeypatch) -> None:

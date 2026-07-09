@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [MemberEntity::class, PlaceEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class GpsTrackDatabase : RoomDatabase() {
@@ -20,7 +20,7 @@ abstract class GpsTrackDatabase : RoomDatabase() {
                 context,
                 GpsTrackDatabase::class.java,
                 "gpstrack.db",
-            ).build()
+            ).fallbackToDestructiveMigration().build()
         }
     }
 }

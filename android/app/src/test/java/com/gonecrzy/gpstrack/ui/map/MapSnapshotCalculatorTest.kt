@@ -147,6 +147,22 @@ class MapSnapshotCalculatorTest {
         assertEquals("R", initials)
     }
 
+    @Test
+    fun `marker grouping merges nearby family members into one cluster`() {
+        val clusters = MapSnapshotCalculator.groupMarkerPoints(
+            points = listOf(
+                MapSnapshotCalculator.MarkerPoint("member-a", 33.03110, -80.13130),
+                MapSnapshotCalculator.MarkerPoint("member-b", 33.03111, -80.13131),
+                MapSnapshotCalculator.MarkerPoint("member-c", 33.04110, -80.14130),
+            ),
+            groupingRadiusMeters = 40.0,
+        )
+
+        assertEquals(2, clusters.size)
+        assertEquals(listOf("member-a", "member-b"), clusters[0].items)
+        assertEquals(listOf("member-c"), clusters[1].items)
+    }
+
     private fun point(
         observedAt: String,
         latitude: Double,
