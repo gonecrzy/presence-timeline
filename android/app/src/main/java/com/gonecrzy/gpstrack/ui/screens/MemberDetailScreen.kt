@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -246,7 +247,7 @@ fun MemberDetailScreen(
         item {
             Text("Timeline", style = MaterialTheme.typography.titleMedium)
         }
-        items(timeline, key = { "${it.kind}-${it.observedAt}-${it.tripId ?: ""}" }) { item ->
+        itemsIndexed(timeline, key = { index, item -> "${item.kind}-${item.observedAt}-${item.tripId ?: ""}-$index" }) { _, item ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(item.kind.replace('_', ' '), style = MaterialTheme.typography.titleSmall)
