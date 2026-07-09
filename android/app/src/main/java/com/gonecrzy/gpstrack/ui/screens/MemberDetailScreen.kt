@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,6 +43,7 @@ import java.time.ZonedDateTime
 import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTimeRange
+import com.gonecrzy.gpstrack.ui.map.TripRoutePreview
 import kotlinx.coroutines.launch
 
 @Composable
@@ -144,6 +146,12 @@ fun MemberDetailScreen(
                     Text("${route.distanceM.toInt()} m across ${route.pointCount} points")
                     Text("Started: ${formatPhoneDateTime(route.startedAt)}")
                     Text("Ended: ${route.endedAt?.let(::formatPhoneDateTime) ?: "In progress"}")
+                    TripRoutePreview(
+                        route = route,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp),
+                    )
                 }
             },
         )
@@ -245,7 +253,7 @@ fun MemberDetailScreen(
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${trip.distanceM.toInt()} m", style = MaterialTheme.typography.titleMedium)
                         Text(formatPhoneDateTimeRange(trip.startedAt, trip.endedAt), style = MaterialTheme.typography.bodySmall)
-                        Text("Tap for route payload", style = MaterialTheme.typography.labelSmall)
+                        Text("Tap for route preview", style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
