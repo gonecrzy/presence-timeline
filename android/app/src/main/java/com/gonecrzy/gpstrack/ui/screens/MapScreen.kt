@@ -169,6 +169,11 @@ fun MapScreen(
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    if (selectedMember != null) {
+                        TextButton(onClick = { selectedMemberId = null }) {
+                            Text("Show Family Overview")
+                        }
+                    }
                     if (selectedMember != null && selectedLatestLocation != null) {
                         Text(
                             "Arrived ${formatRelativeDuration(dwellStart)}",
@@ -185,9 +190,6 @@ fun MapScreen(
                             "Last update ${selectedLatestLocation.observedAt}",
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        TextButton(onClick = { selectedMemberId = null }) {
-                            Text("Show Family Overview")
-                        }
                     }
                 }
             }
@@ -237,6 +239,11 @@ fun MapScreen(
                         Button(onClick = { selectedMemberId = state.member.id }) {
                             Text(if (isSelected) "Viewing Route" else "View Route")
                         }
+                        if (isSelected) {
+                            TextButton(onClick = { selectedMemberId = null }) {
+                                Text("Family View")
+                            }
+                        }
                         TextButton(onClick = { onMemberSelected(state.member.id) }) {
                             Text("Open Details")
                         }
@@ -284,16 +291,6 @@ private fun MapSurface(
         }
     }
 
-    // Handle Map Style updates
-    LaunchedEffect(mapStyleUrl) {
-        mapView.getMapAsync { map ->
-            map.setMinZoomPreference(0.0)
-            if (map.style?.url != mapStyleUrl) {
-                map.setStyle(mapStyleUrl)
-            }
-        }
-    }
-
     DisposableEffect(lifecycleOwner, mapView) {
         mapView.getMapAsync { map ->
             map.setOnMarkerClickListener { marker ->
@@ -324,14 +321,28 @@ private fun MapSurface(
             factory = { mapView },
             update = {
                 it.getMapAsync { map ->
-                    renderMap(
-                        context = context,
-                        iconFactory = iconFactory,
-                        map = map,
-                        members = members,
-                        selectedMemberId = selectedMemberId,
-                        routePoints = routePoints,
-                    )
+                    map.setMinZoomPreference(0.0)
+                    if (map.style?.url != mapStyleUrl) {
+                        map.setStyle(mapStyleUrl) {
+                            renderMap(
+                                context = context,
+                                iconFactory = iconFactory,
+                                map = map,
+                                members = members,
+                                selectedMemberId = selectedMemberId,
+                                routePoints = routePoints,
+                            )
+                        }
+                    } else {
+                        renderMap(
+                            context = context,
+                            iconFactory = iconFactory,
+                            map = map,
+                            members = members,
+                            selectedMemberId = selectedMemberId,
+                            routePoints = routePoints,
+                        )
+                    }
                 }
             },
         )
