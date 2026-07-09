@@ -43,8 +43,11 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import com.gonecrzy.gpstrack.ui.format.formatDisplayDate
 import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
+import com.gonecrzy.gpstrack.ui.format.formatHistoryDateTime
+import com.gonecrzy.gpstrack.ui.format.formatHistoryDateTimeRange
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTimeRange
+import com.gonecrzy.gpstrack.ui.format.formatSafetyEventSummary
 import com.gonecrzy.gpstrack.ui.map.TripRoutePreview
 import kotlinx.coroutines.launch
 
@@ -292,7 +295,7 @@ fun MemberDetailScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${trip.distanceM.toInt()} m", style = MaterialTheme.typography.titleMedium)
-                        Text(formatPhoneDateTimeRange(trip.startedAt, trip.endedAt), style = MaterialTheme.typography.bodySmall)
+                        Text(formatHistoryDateTimeRange(trip.startedAt, trip.endedAt), style = MaterialTheme.typography.bodySmall)
                         Text("Tap for route preview", style = MaterialTheme.typography.labelSmall)
                     }
                 }
@@ -305,7 +308,9 @@ fun MemberDetailScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(formatTimelineTitle(item), style = MaterialTheme.typography.titleSmall)
-                    Text(formatTimelineWhen(item), style = MaterialTheme.typography.bodySmall)
+                    formatTimelineWhen(item)?.let { line ->
+                        Text(line, style = MaterialTheme.typography.bodySmall)
+                    }
                     when (item.kind) {
                         "trip" -> Text("${item.distanceM?.toInt() ?: 0} m over ${item.pointCount ?: 0} points")
                         "location_stay" -> {
@@ -318,7 +323,7 @@ fun MemberDetailScreen(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        "safety_event" -> Text(item.eventType ?: "Safety event")
+                        "safety_event" -> Unit
                         else -> Text(formatTimelineCoordinates(item))
                     }
                 }
@@ -330,29 +335,34 @@ fun MemberDetailScreen(
 private fun formatTimelineTitle(item: TimelineItem): String {
     return when (item.kind) {
         "location_stay" -> if (item.isCurrent == true) "Current location" else "Location stay"
-        "safety_event" -> "Safety event"
+        "safety_event" -> formatSafetyEventSummary(
+            eventType = item.eventType,
+            placeName = item.payload?.get("place_name") as? String,
+            observedAt = item.observedAt,
+        )
         "trip" -> "Trip"
         else -> item.kind.replace('_', ' ')
     }
 }
 
-private fun formatTimelineWhen(item: TimelineItem): String {
+private fun formatTimelineWhen(item: TimelineItem): String? {
     return when (item.kind) {
         "location_stay" -> {
             val start = item.startedAt ?: item.observedAt
             val end = item.endedAt
             if (item.isCurrent == true) {
-                "Since ${formatPhoneDateTime(start)}"
+                "Since ${formatHistoryDateTime(start)}"
             } else {
-                formatPhoneDateTimeRange(start, end)
+                formatHistoryDateTimeRange(start, end)
             }
         }
         "trip" -> {
             val start = item.startedAt ?: item.observedAt
             val end = item.endedAt
-            formatPhoneDateTimeRange(start, end)
+            formatHistoryDateTimeRange(start, end)
         }
-        else -> formatPhoneDateTime(item.observedAt)
+        "safety_event" -> null
+        else -> formatHistoryDateTime(item.observedAt)
     }
 }
 

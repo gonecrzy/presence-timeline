@@ -4,11 +4,14 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 private val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yy HH:mm")
     .withZone(ZoneId.systemDefault())
 private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yy")
+private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    .withZone(ZoneId.systemDefault())
 
 fun formatPhoneDateTime(value: String?): String {
     if (value == null) {
@@ -27,6 +30,70 @@ fun formatPhoneDateTimeRange(start: String?, end: String?): String {
 
 fun formatDisplayDate(value: LocalDate): String {
     return dateFormatter.format(value)
+}
+
+fun formatHistoryDateTime(value: String?): String {
+    return formatHistoryDateTime(
+        value = value,
+        today = LocalDate.now(ZoneId.systemDefault()),
+        zoneId = ZoneId.systemDefault(),
+    )
+}
+
+fun formatHistoryDateTimeRange(start: String?, end: String?): String {
+    val startLabel = formatHistoryDateTime(start)
+    val endLabel = end?.let(::formatHistoryDateTime) ?: "In progress"
+    return "$startLabel to $endLabel"
+}
+
+fun formatSafetyEventSummary(
+    eventType: String?,
+    placeName: String?,
+    observedAt: String?,
+): String {
+    return formatSafetyEventSummary(
+        eventType = eventType,
+        placeName = placeName,
+        observedAt = observedAt,
+        today = LocalDate.now(ZoneId.systemDefault()),
+        zoneId = ZoneId.systemDefault(),
+    )
+}
+
+internal fun formatHistoryDateTime(
+    value: String?,
+    today: LocalDate,
+    zoneId: ZoneId,
+): String {
+    if (value == null) {
+        return "Unknown time"
+    }
+    return runCatching {
+        val instant = Instant.parse(value)
+        val localDate = instant.atZone(zoneId).toLocalDate()
+        if (localDate == today) {
+            timeFormatter.withZone(zoneId).format(instant)
+        } else {
+            dateTimeFormatter.withZone(zoneId).format(instant)
+        }
+    }.getOrDefault(value)
+}
+
+internal fun formatSafetyEventSummary(
+    eventType: String?,
+    placeName: String?,
+    observedAt: String?,
+    today: LocalDate,
+    zoneId: ZoneId,
+): String {
+    val action = when (eventType) {
+        "safe_zone_entered" -> "Arrived"
+        "safe_zone_exited" -> "Left"
+        else -> "Updated"
+    }
+    val target = placeName ?: "place"
+    val atTime = formatHistoryDateTime(observedAt, today, zoneId)
+    return "$action $target at $atTime"
 }
 
 fun formatDurationSeconds(durationSeconds: Int): String {
