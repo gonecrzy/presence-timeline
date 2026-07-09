@@ -7,6 +7,16 @@ import org.junit.Test
 
 class DisplayFormattersTest {
     @Test
+    fun `distance formatter uses feet under one mile`() {
+        assertEquals("3120 ft", formatDistanceImperial(950.0))
+    }
+
+    @Test
+    fun `distance formatter uses rounded miles for long trips`() {
+        assertEquals("33 mi", formatDistanceImperial(53106.0))
+    }
+
+    @Test
     fun `history timestamp drops date when entry is today`() {
         val value = formatHistoryDateTime(
             value = "2026-07-09T18:03:00Z",

@@ -6,12 +6,16 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yy HH:mm")
     .withZone(ZoneId.systemDefault())
 private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd/yy")
 private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     .withZone(ZoneId.systemDefault())
+private const val FeetPerMeter = 3.28084
+private const val MetersPerMile = 1609.344
 
 fun formatPhoneDateTime(value: String?): String {
     if (value == null) {
@@ -106,5 +110,21 @@ fun formatDurationSeconds(durationSeconds: Int): String {
         hours > 0 -> "${hours}h"
         minutes > 0 -> "${minutes}m"
         else -> "${durationSeconds}s"
+    }
+}
+
+fun formatDistanceImperial(distanceMeters: Double?): String {
+    val safeDistance = (distanceMeters ?: 0.0).coerceAtLeast(0.0)
+    return when {
+        safeDistance < MetersPerMile -> {
+            val roundedFeet = ((safeDistance * FeetPerMeter) / 10.0).roundToInt() * 10
+            "${roundedFeet} ft"
+        }
+
+        safeDistance < MetersPerMile * 10 -> {
+            String.format(Locale.US, "%.1f mi", safeDistance / MetersPerMile)
+        }
+
+        else -> "${(safeDistance / MetersPerMile).roundToInt()} mi"
     }
 }

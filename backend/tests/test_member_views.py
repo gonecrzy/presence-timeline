@@ -321,6 +321,27 @@ def test_member_view_service_builds_unified_timeline(monkeypatch) -> None:
     assert items[1]["distance_m"] == 950.0
 
 
+def test_member_view_service_deduplicates_trip_entries(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    duplicate_trip = repository.trips[0]
+    repository.trips = [duplicate_trip, duplicate_trip, duplicate_trip]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+    service.trip_derivation = FakeTripDerivation()
+    service.safety_derivation = SimpleNamespace(derive=lambda **_: [])
+
+    items = service.timeline(
+        repository.member.id,
+        datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+        datetime(2026, 7, 8, 22, 0, tzinfo=UTC),
+    )
+
+    trip_items = [item for item in items if item["kind"] == "trip"]
+    assert len(trip_items) == 1
+    assert trip_items[0]["trip_id"] == duplicate_trip.id
+
+
 def test_member_view_service_condenses_nearby_points_into_location_stay(monkeypatch) -> None:
     repository = FakeMemberRepository()
     repository.trips = []

@@ -34,19 +34,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gonecrzy.gpstrack.data.model.DailySummary
 import com.gonecrzy.gpstrack.data.model.DeviceSummary
+import com.gonecrzy.gpstrack.data.model.LocationStop
 import com.gonecrzy.gpstrack.data.model.TimelineItem
 import com.gonecrzy.gpstrack.data.model.TripRoute
 import com.gonecrzy.gpstrack.data.model.TripSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.time.ZonedDateTime
 import com.gonecrzy.gpstrack.ui.format.formatDisplayDate
+import com.gonecrzy.gpstrack.ui.format.formatDistanceImperial
 import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
 import com.gonecrzy.gpstrack.ui.format.formatHistoryDateTime
 import com.gonecrzy.gpstrack.ui.format.formatHistoryDateTimeRange
 import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
-import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTimeRange
 import com.gonecrzy.gpstrack.ui.format.formatSafetyEventSummary
 import com.gonecrzy.gpstrack.ui.map.TripRoutePreview
 import kotlinx.coroutines.launch
@@ -69,7 +70,8 @@ fun MemberDetailScreen(
     val timelineRangeEnd = remember(activeDate) {
         activeDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toString()
     }
-    var tripRoute by remember { mutableStateOf<TripRoute?>(null) }
+    var tripPreview by remember { mutableStateOf<TripPreviewState?>(null) }
+    var selectedStopIndex by remember { mutableStateOf<Int?>(null) }
     var editingProfile by remember { mutableStateOf(false) }
     var editingDevice by remember { mutableStateOf<DeviceSummary?>(null) }
     var isSaving by remember { mutableStateOf(false) }
@@ -144,26 +146,59 @@ fun MemberDetailScreen(
         )
     }
 
-    tripRoute?.let { route ->
+    tripPreview?.let { preview ->
+        val route = preview.route
+        val selectedStop = selectedStopIndex?.let(preview.stops::getOrNull)
         AlertDialog(
-            onDismissRequest = { tripRoute = null },
+            onDismissRequest = {
+                tripPreview = null
+                selectedStopIndex = null
+            },
             confirmButton = {
-                Button(onClick = { tripRoute = null }) {
+                Button(onClick = {
+                    tripPreview = null
+                    selectedStopIndex = null
+                }) {
                     Text("Close")
                 }
             },
             title = { Text("Trip Route") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${route.distanceM.toInt()} m across ${route.pointCount} points")
+                    Text("Travelled ${formatDistanceImperial(route.distanceM)}")
                     Text("Started: ${formatPhoneDateTime(route.startedAt)}")
                     Text("Ended: ${route.endedAt?.let(::formatPhoneDateTime) ?: "In progress"}")
                     TripRoutePreview(
                         route = route,
+                        stops = preview.stops,
+                        onStopSelected = { index -> selectedStopIndex = index },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp),
                     )
+                    when {
+                        preview.stops.isEmpty() -> Text(
+                            "No stop waypoints were found for this trip window.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+
+                        selectedStop != null -> {
+                            Text(selectedStop.label ?: formatTimelineCoordinates(selectedStop), style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                formatHistoryDateTimeRange(selectedStop.startedAt, selectedStop.endedAt),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "Stayed for ${formatDurationSeconds(selectedStop.durationSeconds)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+
+                        else -> Text(
+                            "Tap a waypoint on the map to view stop details.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             },
         )
@@ -246,7 +281,7 @@ fun MemberDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text("Trips: ${daySummary.tripCount}")
-                            Text("Distance: ${daySummary.totalDistanceM.toInt()} m")
+                            Text("Distance: ${formatDistanceImperial(daySummary.totalDistanceM)}")
                         }
                     }
                 }
@@ -287,14 +322,19 @@ fun MemberDetailScreen(
                         .padding(bottom = 4.dp)
                         .clickable {
                         scope.launch {
-                            tripRoute = runCatching {
-                                repository.loadTripRoute(memberId, trip.id)
+                            selectedStopIndex = null
+                            tripPreview = runCatching {
+                                val route = repository.loadTripRoute(memberId, trip.id)
+                                val routeEnd = route.endedAt ?: route.startedAt
+                                val stops = repository.loadMemberStops(memberId, route.startedAt, routeEnd)
+                                    .filter { stop -> stopOverlapsRouteWindow(stop, route.startedAt, routeEnd) }
+                                TripPreviewState(route = route, stops = stops)
                             }.getOrNull()
                         }
                     },
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${trip.distanceM.toInt()} m", style = MaterialTheme.typography.titleMedium)
+                        Text("Travelled ${formatDistanceImperial(trip.distanceM)}", style = MaterialTheme.typography.titleMedium)
                         Text(formatHistoryDateTimeRange(trip.startedAt, trip.endedAt), style = MaterialTheme.typography.bodySmall)
                         Text("Tap for route preview", style = MaterialTheme.typography.labelSmall)
                     }
@@ -312,7 +352,7 @@ fun MemberDetailScreen(
                         Text(line, style = MaterialTheme.typography.bodySmall)
                     }
                     when (item.kind) {
-                        "trip" -> Text("${item.distanceM?.toInt() ?: 0} m over ${item.pointCount ?: 0} points")
+                        "trip" -> Text("Travelled ${formatDistanceImperial(item.distanceM)}")
                         "location_stay" -> {
                             Text(
                                 item.label ?: formatTimelineCoordinates(item),
@@ -380,6 +420,27 @@ private fun formatTimelineCoordinates(item: TimelineItem): String {
     val longitude = item.longitude ?: 0.0
     return "${"%.4f".format(latitude)}, ${"%.4f".format(longitude)}"
 }
+
+private fun formatTimelineCoordinates(stop: LocationStop): String {
+    return "${"%.4f".format(stop.latitude)}, ${"%.4f".format(stop.longitude)}"
+}
+
+private fun stopOverlapsRouteWindow(
+    stop: LocationStop,
+    routeStartedAt: String,
+    routeEndedAt: String,
+): Boolean {
+    val stopStartedAt = runCatching { Instant.parse(stop.startedAt) }.getOrNull() ?: return false
+    val stopEndedAt = runCatching { Instant.parse(stop.endedAt) }.getOrNull() ?: return false
+    val tripStartedAt = runCatching { Instant.parse(routeStartedAt) }.getOrNull() ?: return false
+    val tripEndedAt = runCatching { Instant.parse(routeEndedAt) }.getOrNull() ?: return false
+    return stopEndedAt >= tripStartedAt && stopStartedAt <= tripEndedAt
+}
+
+private data class TripPreviewState(
+    val route: TripRoute,
+    val stops: List<LocationStop>,
+)
 
 @Composable
 private fun MemberEditorDialog(

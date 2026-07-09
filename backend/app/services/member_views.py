@@ -186,7 +186,11 @@ class MemberViewService:
                     "payload": event.payload,
                 }
             )
+        seen_trip_ids: set[UUID] = set()
         for trip in self.repository.list_trips_for_member_range(member_id, start, end):
+            if trip.id in seen_trip_ids:
+                continue
+            seen_trip_ids.add(trip.id)
             items.append(
                 {
                     "kind": "trip",
