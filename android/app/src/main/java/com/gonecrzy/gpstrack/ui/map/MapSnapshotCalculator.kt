@@ -34,6 +34,48 @@ object MapSnapshotCalculator {
         return dwellStart
     }
 
+    fun buildDisplayRoute(
+        points: List<LocationPoint>,
+        dwellRadiusMeters: Double,
+        minimumSegmentMeters: Double,
+    ): List<LocationPoint> {
+        if (points.size < 2) {
+            return points
+        }
+
+        val dwellStart = findDwellStart(points, dwellRadiusMeters)
+        val dwellStartIndex = if (dwellStart == null) {
+            points.lastIndex
+        } else {
+            points.indexOfFirst { it.observedAt == dwellStart.toString() }.coerceAtLeast(0)
+        }
+
+        val preDwellPoints = points.subList(0, dwellStartIndex + 1)
+        val simplified = mutableListOf<LocationPoint>()
+
+        preDwellPoints.forEach { point ->
+            val lastKept = simplified.lastOrNull()
+            if (lastKept == null || distanceMeters(
+                    lastKept.latitude,
+                    lastKept.longitude,
+                    point.latitude,
+                    point.longitude,
+                ) >= minimumSegmentMeters
+            ) {
+                simplified += point
+            } else {
+                simplified[simplified.lastIndex] = point
+            }
+        }
+
+        val latestPoint = points.last()
+        if (simplified.lastOrNull()?.observedAt != latestPoint.observedAt) {
+            simplified += latestPoint
+        }
+
+        return simplified
+    }
+
     private fun distanceMeters(
         startLatitude: Double,
         startLongitude: Double,

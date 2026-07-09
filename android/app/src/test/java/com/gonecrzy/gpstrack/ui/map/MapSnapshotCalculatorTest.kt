@@ -38,6 +38,49 @@ class MapSnapshotCalculatorTest {
         assertNull(MapSnapshotCalculator.findDwellStart(emptyList(), radiusMeters = 250.0))
     }
 
+    @Test
+    fun `display route collapses current dwell cluster`() {
+        val points = listOf(
+            point("2026-07-09T08:00:00Z", 37.4000, -122.0800),
+            point("2026-07-09T08:20:00Z", 37.4210, -122.0840),
+            point("2026-07-09T08:40:00Z", 37.4212, -122.0842),
+            point("2026-07-09T09:00:00Z", 37.4211, -122.0841),
+        )
+
+        val displayRoute = MapSnapshotCalculator.buildDisplayRoute(
+            points = points,
+            dwellRadiusMeters = 250.0,
+            minimumSegmentMeters = 25.0,
+        )
+
+        assertEquals(
+            listOf(
+                "2026-07-09T08:00:00Z",
+                "2026-07-09T08:20:00Z",
+                "2026-07-09T09:00:00Z",
+            ),
+            displayRoute.map(LocationPoint::observedAt),
+        )
+    }
+
+    @Test
+    fun `display route keeps meaningful movement points`() {
+        val points = listOf(
+            point("2026-07-09T08:00:00Z", 37.4000, -122.0800),
+            point("2026-07-09T08:05:00Z", 37.4000, -122.0795),
+            point("2026-07-09T08:10:00Z", 37.4010, -122.0810),
+            point("2026-07-09T08:15:00Z", 37.4020, -122.0820),
+        )
+
+        val displayRoute = MapSnapshotCalculator.buildDisplayRoute(
+            points = points,
+            dwellRadiusMeters = 250.0,
+            minimumSegmentMeters = 25.0,
+        )
+
+        assertEquals(points.map(LocationPoint::observedAt), displayRoute.map(LocationPoint::observedAt))
+    }
+
     private fun point(observedAt: String, latitude: Double, longitude: Double): LocationPoint {
         return LocationPoint(
             memberId = "member-1",

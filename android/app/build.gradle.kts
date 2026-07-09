@@ -18,7 +18,7 @@ val baseUrl = providers.gradleProperty("gpstrack.baseUrl")
     .get()
 
 val mapStyleUrl = providers.gradleProperty("gpstrack.mapStyleUrl")
-    .orElse(localProperties.getProperty("gpstrack.mapStyleUrl") ?: "https://demotiles.maplibre.org/style.json")
+    .orElse(localProperties.getProperty("gpstrack.mapStyleUrl") ?: "https://tiles.openfreemap.org/styles/liberty")
     .get()
 
 android {

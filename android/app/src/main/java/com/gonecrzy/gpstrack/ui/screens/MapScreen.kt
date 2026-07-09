@@ -55,6 +55,7 @@ import org.maplibre.android.maps.MapView
 
 private const val RouteWindowHours = 24L
 private const val DwellRadiusMeters = 250.0
+private const val MinimumDisplaySegmentMeters = 25.0
 
 @Composable
 fun MapScreen(
@@ -110,6 +111,13 @@ fun MapScreen(
     val dwellStart = remember(routePoints) {
         MapSnapshotCalculator.findDwellStart(routePoints, DwellRadiusMeters)
     }
+    val displayRoutePoints = remember(routePoints) {
+        MapSnapshotCalculator.buildDisplayRoute(
+            points = routePoints,
+            dwellRadiusMeters = DwellRadiusMeters,
+            minimumSegmentMeters = MinimumDisplaySegmentMeters,
+        )
+    }
     val selectedMemberStates = members.map { member ->
         MapMemberState(member = member, latestLocation = latestLocations[member.id])
     }
@@ -150,7 +158,7 @@ fun MapScreen(
                 mapStyleUrl = mapStyleUrl,
                 members = selectedMemberStates,
                 selectedMemberId = selectedMemberId,
-                routePoints = routePoints,
+                routePoints = displayRoutePoints,
                 onMarkerSelected = { selectedMemberId = it },
                 modifier = Modifier
                     .fillMaxWidth()
