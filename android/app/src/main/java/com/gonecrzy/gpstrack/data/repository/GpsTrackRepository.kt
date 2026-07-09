@@ -6,6 +6,7 @@ import com.gonecrzy.gpstrack.data.local.MemberEntity
 import com.gonecrzy.gpstrack.data.local.PlaceEntity
 import com.gonecrzy.gpstrack.data.model.DailySummary
 import com.gonecrzy.gpstrack.data.model.DeviceSummary
+import com.gonecrzy.gpstrack.data.model.LocationPoint
 import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.model.TimelineItem
@@ -15,6 +16,7 @@ import com.gonecrzy.gpstrack.data.model.TripSummary
 import com.gonecrzy.gpstrack.data.network.DeviceDto
 import com.gonecrzy.gpstrack.data.network.DeviceUpdateRequestDto
 import com.gonecrzy.gpstrack.data.network.GpsTrackApiFactory
+import com.gonecrzy.gpstrack.data.network.LocationPointDto
 import com.gonecrzy.gpstrack.data.network.MemberDto
 import com.gonecrzy.gpstrack.data.network.MemberUpdateRequestDto
 import com.gonecrzy.gpstrack.data.network.PlaceDto
@@ -71,6 +73,14 @@ class GpsTrackRepository(
         val api = api()
         val members = api.listMembers().items
         database.memberDao().upsertAll(members.map(::memberEntity))
+    }
+
+    suspend fun loadLatestLocation(memberId: String): LocationPoint {
+        return api().getLatestLocation(memberId).toDomain()
+    }
+
+    suspend fun loadMemberHistory(memberId: String, start: String, end: String): List<LocationPoint> {
+        return api().getMemberHistory(memberId, start, end).items.map(LocationPointDto::toDomain)
     }
 
     suspend fun refreshPlaces() {
@@ -267,5 +277,17 @@ private fun DeviceDto.toDomain(): DeviceSummary {
         label = label,
         ignored = ignored,
         lastSeenAt = lastSeenAt,
+    )
+}
+
+private fun LocationPointDto.toDomain(): LocationPoint {
+    return LocationPoint(
+        memberId = memberId,
+        observedAt = observedAt,
+        latitude = latitude,
+        longitude = longitude,
+        accuracyM = accuracyM,
+        batteryLevel = batteryLevel,
+        sourceEntityId = sourceEntityId,
     )
 }

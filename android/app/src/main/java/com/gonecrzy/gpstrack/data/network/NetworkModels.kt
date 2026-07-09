@@ -21,6 +21,18 @@ data class DeviceDto(
     @Json(name = "last_seen_at") val lastSeenAt: String?,
 )
 
+data class LocationPointDto(
+    @Json(name = "member_id") val memberId: String,
+    @Json(name = "observed_at") val observedAt: String,
+    val latitude: Double,
+    val longitude: Double,
+    @Json(name = "accuracy_m") val accuracyM: Double?,
+    @Json(name = "battery_level") val batteryLevel: Int?,
+    @Json(name = "source_entity_id") val sourceEntityId: String?,
+)
+
+data class LocationHistoryResponseDto(val items: List<LocationPointDto>)
+
 data class MemberUpdateRequestDto(
     @Json(name = "display_name") val displayName: String?,
     @Json(name = "is_child") val isChild: Boolean?,

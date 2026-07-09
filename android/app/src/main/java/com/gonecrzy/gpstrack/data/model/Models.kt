@@ -17,6 +17,16 @@ data class MemberSummary(
     val devices: List<DeviceSummary>,
 )
 
+data class LocationPoint(
+    val memberId: String,
+    val observedAt: String,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyM: Double?,
+    val batteryLevel: Int?,
+    val sourceEntityId: String?,
+)
+
 data class PlaceSummary(
     val id: String,
     val name: String,

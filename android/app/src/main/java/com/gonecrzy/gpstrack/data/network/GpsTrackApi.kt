@@ -18,6 +18,16 @@ interface GpsTrackApi {
     @GET("api/v1/members")
     suspend fun listMembers(): MemberListResponseDto
 
+    @GET("api/v1/members/{memberId}/latest-location")
+    suspend fun getLatestLocation(@Path("memberId") memberId: String): LocationPointDto
+
+    @GET("api/v1/members/{memberId}/history")
+    suspend fun getMemberHistory(
+        @Path("memberId") memberId: String,
+        @Query("start") start: String,
+        @Query("end") end: String,
+    ): LocationHistoryResponseDto
+
     @PATCH("api/v1/members/{memberId}")
     suspend fun updateMember(
         @Path("memberId") memberId: String,
