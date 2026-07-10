@@ -38,15 +38,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import com.gonecrzy.gpstrack.data.model.PlaceSearchCandidate
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.ui.components.AutoRefreshEffect
+import com.gonecrzy.gpstrack.ui.map.bindMapViewLifecycle
 import com.gonecrzy.gpstrack.ui.map.buildRadiusRing
 import com.gonecrzy.gpstrack.ui.map.ensureCircleLayer
 import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
+import com.gonecrzy.gpstrack.ui.map.unbindMapViewLifecycle
 import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
@@ -328,19 +328,9 @@ private fun PlacePreviewMap(
     }
 
     DisposableEffect(lifecycleOwner, mapView) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        val observer = bindMapViewLifecycle(lifecycleOwner.lifecycle, mapView)
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            unbindMapViewLifecycle(lifecycleOwner.lifecycle, observer, mapView)
         }
     }
 

@@ -48,8 +48,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gonecrzy.gpstrack.data.model.LocationPoint
@@ -83,12 +81,14 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
+import com.gonecrzy.gpstrack.ui.map.bindMapViewLifecycle
 import com.gonecrzy.gpstrack.ui.map.buildRadiusRing
 import com.gonecrzy.gpstrack.ui.map.ensureSymbolLayer
 import com.gonecrzy.gpstrack.ui.map.ensureCircleLayer
 import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
 import com.gonecrzy.gpstrack.ui.map.labelProperties
 import com.gonecrzy.gpstrack.ui.map.markerIconProperties
+import com.gonecrzy.gpstrack.ui.map.unbindMapViewLifecycle
 import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 
 private const val MarkerGroupingRadiusMeters = 40.0
@@ -397,20 +397,10 @@ private fun MapSurface(
             map.addOnMapClickListener(clickListener)
         }
 
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        val observer = bindMapViewLifecycle(lifecycleOwner.lifecycle, mapView)
         onDispose {
             mapReference?.removeOnMapClickListener(clickListener)
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            unbindMapViewLifecycle(lifecycleOwner.lifecycle, observer, mapView)
         }
     }
 

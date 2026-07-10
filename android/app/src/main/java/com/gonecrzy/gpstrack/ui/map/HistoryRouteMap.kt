@@ -10,8 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import com.gonecrzy.gpstrack.ui.model.HistoryMapMarkerUiModel
 import com.gonecrzy.gpstrack.ui.model.HistoryMapUiModel
 import org.maplibre.android.MapLibre
@@ -72,20 +70,10 @@ fun HistoryRouteMap(
             map.addOnMapClickListener(clickListener)
         }
 
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        val observer = bindMapViewLifecycle(lifecycleOwner.lifecycle, mapView)
         onDispose {
             mapReference?.removeOnMapClickListener(clickListener)
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            unbindMapViewLifecycle(lifecycleOwner.lifecycle, observer, mapView)
         }
     }
 
