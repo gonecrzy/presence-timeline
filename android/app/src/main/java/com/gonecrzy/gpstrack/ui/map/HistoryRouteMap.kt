@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -41,12 +42,13 @@ fun HistoryRouteMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnMarkerSelected = rememberUpdatedState(onMarkerSelected)
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply { onCreate(Bundle()) }
     }
 
-    DisposableEffect(lifecycleOwner, mapView, onMarkerSelected) {
+    DisposableEffect(lifecycleOwner, mapView) {
         var mapReference: MapLibreMap? = null
         val clickListener = MapLibreMap.OnMapClickListener { latLng ->
             val map = mapReference ?: return@OnMapClickListener false
@@ -58,7 +60,7 @@ fun HistoryRouteMap(
             ).firstOrNull { it.hasNonNullValueForProperty("itemId") }
                 ?.getStringProperty("itemId")
             if (selectedId != null) {
-                onMarkerSelected(selectedId)
+                currentOnMarkerSelected.value(selectedId)
                 true
             } else {
                 false

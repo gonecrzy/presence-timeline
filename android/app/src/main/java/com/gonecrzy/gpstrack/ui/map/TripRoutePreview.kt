@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -46,6 +47,7 @@ fun TripRoutePreview(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnStopSelected = rememberUpdatedState(onStopSelected)
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -66,7 +68,7 @@ fun TripRoutePreview(
                 ?.getNumberProperty("stopIndex")
                 ?.toInt()
             if (stopIndex != null) {
-                onStopSelected(stopIndex)
+                currentOnStopSelected.value(stopIndex)
                 true
             } else {
                 false

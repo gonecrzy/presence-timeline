@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -350,6 +351,8 @@ private fun MapSurface(
     modifier: Modifier = Modifier,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnMarkerSelected = rememberUpdatedState(onMarkerSelected)
+    val currentOnMapTapped = rememberUpdatedState(onMapTapped)
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -359,7 +362,7 @@ private fun MapSurface(
     val lastAppliedRecenterToken = remember { mutableIntStateOf(Int.MIN_VALUE) }
     val lastHadLocations = remember { mutableIntStateOf(0) }
 
-    DisposableEffect(lifecycleOwner, mapView, onMarkerSelected, onMapTapped) {
+    DisposableEffect(lifecycleOwner, mapView) {
         var mapReference: MapLibreMap? = null
         val clickListener = MapLibreMap.OnMapClickListener { latLng ->
             val map = mapReference ?: return@OnMapClickListener false
@@ -371,7 +374,7 @@ private fun MapSurface(
 
             when {
                 feature?.hasNonNullValueForProperty("memberId") == true -> {
-                    onMarkerSelected(feature.getStringProperty("memberId"))
+                    currentOnMarkerSelected.value(feature.getStringProperty("memberId"))
                     true
                 }
 
@@ -386,7 +389,7 @@ private fun MapSurface(
                 }
 
                 else -> {
-                    onMapTapped()
+                    currentOnMapTapped.value()
                     false
                 }
             }
