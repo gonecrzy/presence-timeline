@@ -142,10 +142,18 @@ class HistoryViewModel(
         val memberId = state.selectedMemberId ?: return
         val period = state.period
         val date = state.selectedDate
+        val zoneId = java.time.ZoneId.systemDefault()
+
         val (start, end) = when (period) {
-            HistoryPeriod.DAY -> date.atStartOfDay(ZoneOffset.UTC).toInstant() to date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
-            HistoryPeriod.WEEK -> date.minusDays(6).atStartOfDay(ZoneOffset.UTC).toInstant() to date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
-            HistoryPeriod.MONTH -> date.minusDays(29).atStartOfDay(ZoneOffset.UTC).toInstant() to date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
+            HistoryPeriod.DAY -> {
+                date.atStartOfDay(zoneId).toInstant() to date.plusDays(1).atStartOfDay(zoneId).toInstant()
+            }
+            HistoryPeriod.WEEK -> {
+                date.minusDays(6).atStartOfDay(zoneId).toInstant() to date.plusDays(1).atStartOfDay(zoneId).toInstant()
+            }
+            HistoryPeriod.MONTH -> {
+                date.minusDays(29).atStartOfDay(zoneId).toInstant() to date.plusDays(1).atStartOfDay(zoneId).toInstant()
+            }
         }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {

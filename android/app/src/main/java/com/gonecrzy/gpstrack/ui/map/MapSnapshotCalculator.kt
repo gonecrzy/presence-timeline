@@ -10,7 +10,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 object MapSnapshotCalculator {
-    private const val MaximumDisplayAccuracyMeters = 50.0
+    private const val MaximumDisplayAccuracyMeters = 200.0
 
     data class MarkerPoint<T>(
         val item: T,
