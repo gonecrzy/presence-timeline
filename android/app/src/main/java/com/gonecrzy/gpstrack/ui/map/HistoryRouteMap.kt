@@ -19,6 +19,8 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.style.expressions.Expression.all
+import org.maplibre.android.style.expressions.Expression.any
 import org.maplibre.android.style.expressions.Expression.eq
 import org.maplibre.android.style.expressions.Expression.get
 import org.maplibre.android.style.expressions.Expression.literal
@@ -30,7 +32,8 @@ import org.maplibre.geojson.Point
 private const val HistoryRouteSourceId = "gpstrack-history-route"
 private const val HistoryRouteLayerId = "gpstrack-history-route-layer"
 private const val HistoryMarkerSourceId = "gpstrack-history-markers"
-private const val HistoryMarkerLayerId = "gpstrack-history-markers-layer"
+private const val HistoryEndpointMarkerLayerId = "gpstrack-history-markers-endpoints-layer"
+private const val HistoryWaypointMarkerLayerId = "gpstrack-history-markers-waypoints-layer"
 private const val HistorySelectedMarkerLayerId = "gpstrack-history-markers-selected-layer"
 
 @Composable
@@ -56,7 +59,8 @@ fun HistoryRouteMap(
             val selectedId = map.queryRenderedFeatures(
                 PointF(screenPoint.x, screenPoint.y),
                 HistorySelectedMarkerLayerId,
-                HistoryMarkerLayerId,
+                HistoryWaypointMarkerLayerId,
+                HistoryEndpointMarkerLayerId,
             ).firstOrNull { it.hasNonNullValueForProperty("itemId") }
                 ?.getStringProperty("itemId")
             if (selectedId != null) {
@@ -127,6 +131,7 @@ private fun renderHistoryRouteMap(
             addStringProperty("itemId", marker.id)
             addBooleanProperty("selected", marker.isSelected)
             addStringProperty("label", marker.label.take(1))
+            addStringProperty("kind", marker.kind.name)
         }
     }
     style.upsertGeoJsonSource(
@@ -134,13 +139,35 @@ private fun renderHistoryRouteMap(
         FeatureCollection.fromFeatures(markerFeatures),
     )
     style.ensureCircleLayer(
-        layerId = HistoryMarkerLayerId,
+        layerId = HistoryEndpointMarkerLayerId,
         sourceId = HistoryMarkerSourceId,
         color = Color.parseColor("#17324A"),
-        radius = 6f,
+        radius = 6.5f,
         strokeColor = Color.WHITE,
         strokeWidth = 2f,
-        filter = eq(get("selected"), literal(false)),
+        filter = all(
+            eq(get("selected"), literal(false)),
+            any(
+                eq(get("kind"), literal("START")),
+                eq(get("kind"), literal("END")),
+            ),
+        ),
+    )
+    style.ensureCircleLayer(
+        layerId = HistoryWaypointMarkerLayerId,
+        sourceId = HistoryMarkerSourceId,
+        color = Color.parseColor("#F5B342"),
+        radius = 5.5f,
+        strokeColor = Color.WHITE,
+        strokeWidth = 2f,
+        belowLayerId = HistorySelectedMarkerLayerId,
+        filter = all(
+            eq(get("selected"), literal(false)),
+            any(
+                eq(get("kind"), literal("STOP")),
+                eq(get("kind"), literal("SUMMARY")),
+            ),
+        ),
     )
     style.ensureCircleLayer(
         layerId = HistorySelectedMarkerLayerId,

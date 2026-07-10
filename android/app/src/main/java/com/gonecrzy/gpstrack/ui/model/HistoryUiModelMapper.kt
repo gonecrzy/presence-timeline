@@ -135,6 +135,9 @@ fun buildHistoryMapUiModel(
             }
         }
         timelineItems.forEach { item ->
+            if (!shouldDisplayWaypointMarker(period, item.kind)) {
+                return@forEach
+            }
             val latitude = item.latitude ?: return@forEach
             val longitude = item.longitude ?: return@forEach
             add(
@@ -183,6 +186,18 @@ fun buildHistorySummaryLabel(
 
 private fun TimelineItem.timelineItemStableId(index: Int): String {
     return "${kind}-${observedAt}-${tripId ?: ""}-${startedAt ?: ""}-${index}"
+}
+
+private fun shouldDisplayWaypointMarker(
+    period: HistoryPeriod,
+    kind: HistoryTimelineKind,
+): Boolean {
+    return when (period) {
+        HistoryPeriod.DAY -> kind == HistoryTimelineKind.STAY
+        HistoryPeriod.WEEK,
+        HistoryPeriod.MONTH,
+        -> kind == HistoryTimelineKind.SUMMARY
+    }
 }
 
 private fun formatTimelineTitle(item: TimelineItem): String {
