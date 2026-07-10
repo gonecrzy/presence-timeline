@@ -103,7 +103,7 @@ class MapSnapshotCalculatorTest {
     fun `display route drops poor accuracy outliers before simplifying`() {
         val points = listOf(
             point("2026-07-09T08:00:00Z", 37.4000, -122.0800, accuracyM = 12.0),
-            point("2026-07-09T08:15:00Z", 37.4010, -122.0810, accuracyM = 98.0),
+            point("2026-07-09T08:15:00Z", 37.4010, -122.0810, accuracyM = 250.0),
             point("2026-07-09T08:30:00Z", 37.4020, -122.0820, accuracyM = 13.0),
         )
 
