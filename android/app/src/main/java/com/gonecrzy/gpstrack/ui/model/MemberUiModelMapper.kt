@@ -7,8 +7,8 @@ import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
 import java.time.Duration
 import java.time.Instant
 
-private val LiveThreshold: Duration = Duration.ofMinutes(5)
-private val OfflineThreshold: Duration = Duration.ofMinutes(60)
+private val LiveThreshold: Duration = Duration.ofMinutes(15)
+private val OfflineThreshold: Duration = Duration.ofMinutes(90)
 
 fun MemberSummary.toFamilyMemberUiModel(
     latestLocation: LocationPoint?,

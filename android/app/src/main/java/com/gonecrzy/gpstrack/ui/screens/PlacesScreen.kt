@@ -43,6 +43,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.gonecrzy.gpstrack.data.model.PlaceSearchCandidate
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import com.gonecrzy.gpstrack.ui.components.AutoRefreshEffect
 import com.gonecrzy.gpstrack.ui.map.ensureCircleLayer
 import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
 import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
@@ -76,10 +77,24 @@ fun PlacesScreen(
     val scope = rememberCoroutineScope()
     var editingPlace by remember { mutableStateOf<PlaceSummary?>(null) }
     var showCreate by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    fun refreshPlaces() {
+        if (isRefreshing) {
+            return
+        }
+        scope.launch {
+            isRefreshing = true
+            runCatching { repository.refreshPlaces() }
+            isRefreshing = false
+        }
+    }
 
     LaunchedEffect(Unit) {
-        runCatching { repository.refreshPlaces() }
+        refreshPlaces()
     }
+
+    AutoRefreshEffect(onRefresh = { refreshPlaces() })
 
     if (showCreate) {
         PlaceEditorDialog(
@@ -90,7 +105,7 @@ fun PlacesScreen(
             onSubmit = { name, type, lat, lon, radius, safe ->
                 scope.launch {
                     repository.createPlace(name, type, lat, lon, radius, safe)
-                    repository.refreshPlaces()
+                    refreshPlaces()
                 }
                 showCreate = false
             },
@@ -105,7 +120,7 @@ fun PlacesScreen(
             onSubmit = { name, type, lat, lon, radius, safe ->
                 scope.launch {
                     repository.updatePlace(place.id, name, type, lat, lon, radius, safe)
-                    repository.refreshPlaces()
+                    refreshPlaces()
                 }
                 editingPlace = null
             },

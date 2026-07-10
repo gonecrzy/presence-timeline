@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import com.gonecrzy.gpstrack.ui.components.AutoRefreshEffect
 import com.gonecrzy.gpstrack.ui.components.EmptyState
 import com.gonecrzy.gpstrack.ui.components.ErrorState
 import com.gonecrzy.gpstrack.ui.components.FamilyMemberCard
@@ -50,6 +51,8 @@ fun MembersScreen(
     val staleCount = uiState.members.count { member ->
         member.presenceState == PresenceState.STALE || member.presenceState == PresenceState.OFFLINE
     }
+
+    AutoRefreshEffect(onRefresh = { viewModel.refresh() })
 
     LazyColumn(
         modifier = Modifier

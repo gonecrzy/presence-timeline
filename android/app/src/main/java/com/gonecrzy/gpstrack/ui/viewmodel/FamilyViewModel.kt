@@ -10,6 +10,7 @@ import com.gonecrzy.gpstrack.ui.model.toFamilyMemberUiModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -21,6 +22,7 @@ class FamilyViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(FamilyScreenUiState())
     val uiState = _uiState.asStateFlow()
+    private var refreshJob: Job? = null
 
     init {
         observeMembers()
@@ -28,7 +30,10 @@ class FamilyViewModel(
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        if (refreshJob?.isActive == true) {
+            return
+        }
+        refreshJob = viewModelScope.launch {
             _uiState.update { state ->
                 state.copy(
                     isLoading = state.members.isEmpty(),

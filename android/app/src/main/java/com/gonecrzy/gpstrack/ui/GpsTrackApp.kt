@@ -27,8 +27,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import com.gonecrzy.gpstrack.AppContainer
 import com.gonecrzy.gpstrack.ui.navigation.AppDestination
+import com.gonecrzy.gpstrack.ui.model.HistoryPeriod
 import com.gonecrzy.gpstrack.ui.screens.HistoryScreen
 import com.gonecrzy.gpstrack.ui.screens.MapScreen
 import com.gonecrzy.gpstrack.ui.screens.MemberDetailScreen
@@ -116,6 +118,18 @@ fun GpsTrackApp(container: AppContainer) {
                             restoreState = true
                         }
                     },
+                    onViewToday = { memberId, date ->
+                        navController.navigate(
+                            AppDestination.History.build(
+                                memberId = memberId,
+                                period = HistoryPeriod.DAY.name,
+                                date = date,
+                            ),
+                        ) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                     onMemberSelected = { navController.navigate(AppDestination.MemberDetail.build(it)) },
                 )
             }
@@ -125,8 +139,37 @@ fun GpsTrackApp(container: AppContainer) {
                     contentPadding = screenPadding,
                 )
             }
-            composable(AppDestination.History.route) {
-                HistoryScreen(contentPadding = screenPadding)
+            composable(
+                route = AppDestination.History.route,
+                arguments = listOf(
+                    navArgument("memberId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("period") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("date") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                HistoryScreen(
+                    repository = container.repository,
+                    preferences = container.preferences,
+                    contentPadding = screenPadding,
+                    initialMemberId = entry.arguments?.getString("memberId"),
+                    initialPeriod = entry.arguments?.getString("period"),
+                    initialDate = entry.arguments?.getString("date"),
+                    onMemberSelected = { memberId ->
+                        navController.navigate(AppDestination.MemberDetail.build(memberId))
+                    },
+                )
             }
             composable(AppDestination.Settings.route) {
                 SettingsScreen(
@@ -141,6 +184,21 @@ fun GpsTrackApp(container: AppContainer) {
                 MemberDetailScreen(
                     memberId = entry.arguments?.getString("memberId").orEmpty(),
                     repository = container.repository,
+                    onViewMap = {
+                        navController.navigate(AppDestination.Map.rootRoute) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onViewHistory = { selectedMemberId ->
+                        navController.navigate(
+                            AppDestination.History.build(
+                                memberId = selectedMemberId,
+                                period = HistoryPeriod.DAY.name,
+                                date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
+                            ),
+                        )
+                    },
                 )
             }
         }

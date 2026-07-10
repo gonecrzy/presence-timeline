@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +41,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.gonecrzy.gpstrack.ui.model.FamilyMemberUiModel
+import com.gonecrzy.gpstrack.ui.model.HistoryTimelineItemUiModel
+import com.gonecrzy.gpstrack.ui.model.HistoryTimelineKind
 import com.gonecrzy.gpstrack.ui.model.MemberRole
 import com.gonecrzy.gpstrack.ui.model.PresenceState
 import com.gonecrzy.gpstrack.ui.theme.GpsTrackTheme
@@ -467,6 +470,78 @@ fun LoadingState(
 }
 
 @Composable
+fun TimelineItemRow(
+    item: HistoryTimelineItemUiModel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = if (item.isSelected) {
+            MaterialTheme.appColors.surfaceElevated
+        } else {
+            MaterialTheme.appColors.surfacePrimary
+        },
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(MaterialTheme.spacing.large),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.xSmall),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when (item.kind) {
+                                HistoryTimelineKind.STAY -> MaterialTheme.appColors.accentPrimary
+                                HistoryTimelineKind.TRIP -> MaterialTheme.appColors.success
+                                HistoryTimelineKind.EVENT -> MaterialTheme.appColors.warning
+                                HistoryTimelineKind.SUMMARY -> MaterialTheme.appColors.textSecondary
+                            },
+                        ),
+                )
+                Spacer(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .heightIn(min = 32.dp)
+                        .background(MaterialTheme.appColors.divider),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.xSmall),
+            ) {
+                Text(item.timeLabel, style = MaterialTheme.typography.labelLarge)
+                Text(item.title, style = MaterialTheme.typography.titleSmall)
+                item.subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.appColors.textSecondary,
+                    )
+                }
+                item.metaLabel?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.appColors.textSecondary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun RolePill(text: String) {
     Surface(
         shape = CircleShape,
@@ -522,6 +597,27 @@ private fun MemberPreviewSheetPreview() {
             onViewToday = {},
             onOpenDetails = {},
             onRecenter = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF07111F)
+@Composable
+private fun TimelineItemRowPreview() {
+    GpsTrackTheme {
+        TimelineItemRow(
+            item = HistoryTimelineItemUiModel(
+                id = "timeline-1",
+                title = "Broad Street, King Street District",
+                subtitle = null,
+                timeLabel = "7:42 PM",
+                metaLabel = "Stayed for 22m",
+                latitude = 32.77,
+                longitude = -79.92,
+                isSelected = true,
+                kind = HistoryTimelineKind.STAY,
+            ),
+            onClick = {},
         )
     }
 }

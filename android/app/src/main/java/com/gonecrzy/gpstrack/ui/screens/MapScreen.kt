@@ -58,6 +58,7 @@ import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import com.gonecrzy.gpstrack.ui.components.EmptyState
 import com.gonecrzy.gpstrack.ui.components.ErrorState
 import com.gonecrzy.gpstrack.ui.components.LoadingState
+import com.gonecrzy.gpstrack.ui.components.AutoRefreshEffect
 import com.gonecrzy.gpstrack.ui.components.MapControlButton
 import com.gonecrzy.gpstrack.ui.components.MemberPreviewSheet
 import com.gonecrzy.gpstrack.ui.model.FamilyMemberUiModel
@@ -94,6 +95,7 @@ fun MapScreen(
     repository: GpsTrackRepository,
     preferences: AppPreferences,
     onFamilySelected: () -> Unit,
+    onViewToday: (String, String) -> Unit,
     onMemberSelected: (String) -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
@@ -124,6 +126,8 @@ fun MapScreen(
             white = android.graphics.Color.WHITE,
         )
     }
+
+    AutoRefreshEffect(onRefresh = { viewModel.refresh() })
 
     LaunchedEffect(selectedMember?.id) {
         if (selectedMember != null) {
@@ -277,7 +281,12 @@ fun MapScreen(
         ) {
             MemberPreviewSheet(
                 member = selectedMember,
-                onViewToday = { onMemberSelected(selectedMember.id) },
+                onViewToday = {
+                    onViewToday(
+                        selectedMember.id,
+                        java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
+                    )
+                },
                 onOpenDetails = { onMemberSelected(selectedMember.id) },
                 onRecenter = { recenterToken += 1 },
                 modifier = Modifier.navigationBarsPadding(),

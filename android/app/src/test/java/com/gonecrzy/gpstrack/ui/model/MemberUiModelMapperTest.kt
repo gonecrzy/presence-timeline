@@ -43,24 +43,43 @@ class MemberUiModelMapperTest {
     }
 
     @Test
-    fun `maps older member snapshot to stale ui model`() {
+    fun `maps older but still recent member snapshot to live ui model`() {
         val member = memberSummary(
             displayName = "Riley Stone",
             isChild = true,
-            lastSeenAt = "2026-07-10T19:42:00Z",
+            lastSeenAt = "2026-07-10T19:48:00Z",
             currentLocationLabel = "School",
         )
 
         val uiModel = member.toFamilyMemberUiModel(
-            latestLocation = latestLocation(observedAt = "2026-07-10T19:42:00Z"),
+            latestLocation = latestLocation(observedAt = "2026-07-10T19:48:00Z"),
+            now = now,
+        )
+
+        assertEquals(PresenceState.LIVE, uiModel.presenceState)
+        assertEquals(MemberRole.CHILD, uiModel.role)
+        assertEquals("School", uiModel.locationLabel)
+        assertNull(uiModel.secondaryLocationLabel)
+        assertEquals("Updated 12 min ago", uiModel.lastUpdatedLabel)
+    }
+
+    @Test
+    fun `maps moderately old member snapshot to stale ui model`() {
+        val member = memberSummary(
+            displayName = "Mason Lee",
+            isChild = true,
+            lastSeenAt = "2026-07-10T18:45:00Z",
+            currentLocationLabel = null,
+        )
+
+        val uiModel = member.toFamilyMemberUiModel(
+            latestLocation = null,
             now = now,
         )
 
         assertEquals(PresenceState.STALE, uiModel.presenceState)
-        assertEquals(MemberRole.CHILD, uiModel.role)
-        assertEquals("School", uiModel.locationLabel)
-        assertNull(uiModel.secondaryLocationLabel)
-        assertEquals("Updated 18 min ago", uiModel.lastUpdatedLabel)
+        assertEquals("Location unavailable", uiModel.locationLabel)
+        assertEquals("Updated 1 hr 15 min ago", uiModel.lastUpdatedLabel)
     }
 
     @Test
