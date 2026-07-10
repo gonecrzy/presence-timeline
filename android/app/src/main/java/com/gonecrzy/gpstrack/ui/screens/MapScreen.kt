@@ -62,6 +62,7 @@ import com.gonecrzy.gpstrack.ui.components.AutoRefreshEffect
 import com.gonecrzy.gpstrack.ui.components.MapControlButton
 import com.gonecrzy.gpstrack.ui.components.MemberPreviewSheet
 import com.gonecrzy.gpstrack.ui.model.FamilyMemberUiModel
+import com.gonecrzy.gpstrack.ui.model.MapPlaceUiModel
 import com.gonecrzy.gpstrack.ui.model.PresenceState
 import com.gonecrzy.gpstrack.ui.theme.appColors
 import com.gonecrzy.gpstrack.ui.theme.spacing
@@ -74,18 +75,28 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.style.expressions.Expression.eq
 import org.maplibre.android.style.expressions.Expression.get
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
+import com.gonecrzy.gpstrack.ui.map.buildRadiusRing
 import com.gonecrzy.gpstrack.ui.map.ensureSymbolLayer
+import com.gonecrzy.gpstrack.ui.map.ensureCircleLayer
+import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
+import com.gonecrzy.gpstrack.ui.map.labelProperties
 import com.gonecrzy.gpstrack.ui.map.markerIconProperties
 import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 
 private const val MarkerGroupingRadiusMeters = 40.0
 private const val MarkerSourceId = "gpstrack-family-markers"
 private const val MarkerLayerId = "gpstrack-family-marker-layer"
+private const val SavedPlaceSourceId = "gpstrack-saved-places"
+private const val SavedPlaceRingLayerId = "gpstrack-saved-place-rings"
+private const val SavedPlaceCenterLayerId = "gpstrack-saved-place-centers"
+private const val SavedPlaceLabelLayerId = "gpstrack-saved-place-labels"
 private const val SelectedMemberZoom = 14.0
 private const val MaximumAutoZoom = 12.5
 
@@ -123,6 +134,8 @@ fun MapScreen(
             stale = colors.warning.toArgb(),
             offline = colors.textSecondary.toArgb(),
             text = colors.textPrimary.toArgb(),
+            placeRing = colors.accentPrimary.copy(alpha = 0.62f).toArgb(),
+            placeCenter = colors.accentPrimary.toArgb(),
             white = android.graphics.Color.WHITE,
         )
     }
@@ -148,6 +161,7 @@ fun MapScreen(
             context = LocalContext.current,
             mapStyleUrl = mapStyleUrl,
             members = uiState.members,
+            places = uiState.places,
             selectedMemberId = uiState.selectedMemberId,
             recenterToken = recenterToken,
             visualColors = mapVisualColors,
@@ -326,6 +340,7 @@ private fun MapSurface(
     context: Context,
     mapStyleUrl: String,
     members: List<FamilyMemberUiModel>,
+    places: List<MapPlaceUiModel>,
     selectedMemberId: String?,
     recenterToken: Int,
     visualColors: MapVisualColors,
@@ -415,6 +430,7 @@ private fun MapSurface(
                             context = context,
                             map = map,
                             members = members,
+                            places = places,
                             selectedMemberId = selectedMemberId,
                             visualColors = visualColors,
                         )
@@ -430,6 +446,7 @@ private fun MapSurface(
                         context = context,
                         map = map,
                         members = members,
+                        places = places,
                         selectedMemberId = selectedMemberId,
                         visualColors = visualColors,
                     )
@@ -451,6 +468,7 @@ private fun renderMap(
     context: Context,
     map: MapLibreMap,
     members: List<FamilyMemberUiModel>,
+    places: List<MapPlaceUiModel>,
     selectedMemberId: String?,
     visualColors: MapVisualColors,
 ) {
@@ -521,6 +539,72 @@ private fun renderMap(
         layerId = MarkerLayerId,
         sourceId = MarkerSourceId,
         properties = markerIconProperties(get("iconKey")),
+    )
+    renderSavedPlaces(
+        style = style,
+        places = places,
+        visualColors = visualColors,
+    )
+}
+
+private fun renderSavedPlaces(
+    style: org.maplibre.android.maps.Style,
+    places: List<MapPlaceUiModel>,
+    visualColors: MapVisualColors,
+) {
+    val features = buildList {
+        places.forEach { place ->
+            add(
+                Feature.fromGeometry(Point.fromLngLat(place.longitude, place.latitude)).apply {
+                    addStringProperty("kind", "center")
+                    addStringProperty("label", place.name)
+                },
+            )
+            add(
+                Feature.fromGeometry(
+                    LineString.fromLngLats(
+                        buildRadiusRing(
+                            latitude = place.latitude,
+                            longitude = place.longitude,
+                            radiusMeters = place.radiusMeters,
+                        ).map { point ->
+                            Point.fromLngLat(point.longitude, point.latitude)
+                        },
+                    ),
+                ).apply {
+                    addStringProperty("kind", "ring")
+                },
+            )
+        }
+    }
+    style.upsertGeoJsonSource(
+        SavedPlaceSourceId,
+        FeatureCollection.fromFeatures(features),
+    )
+    style.ensureLineLayer(
+        layerId = SavedPlaceRingLayerId,
+        sourceId = SavedPlaceSourceId,
+        color = visualColors.placeRing,
+        width = 2f,
+        belowLayerId = MarkerLayerId,
+        filter = eq(get("kind"), "ring"),
+    )
+    style.ensureCircleLayer(
+        layerId = SavedPlaceCenterLayerId,
+        sourceId = SavedPlaceSourceId,
+        color = visualColors.placeCenter,
+        radius = 4.5f,
+        strokeColor = visualColors.white,
+        strokeWidth = 1.5f,
+        belowLayerId = MarkerLayerId,
+        filter = eq(get("kind"), "center"),
+    )
+    style.ensureSymbolLayer(
+        layerId = SavedPlaceLabelLayerId,
+        sourceId = SavedPlaceSourceId,
+        properties = labelProperties(get("label"), 10f),
+        belowLayerId = MarkerLayerId,
+        filter = eq(get("kind"), "center"),
     )
 }
 
@@ -680,5 +764,7 @@ private data class MapVisualColors(
     val stale: Int,
     val offline: Int,
     val text: Int,
+    val placeRing: Int,
+    val placeCenter: Int,
     val white: Int,
 )

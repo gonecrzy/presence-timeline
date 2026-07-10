@@ -2,14 +2,8 @@ package com.gonecrzy.gpstrack.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gonecrzy.gpstrack.data.model.LocationPoint
-import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.ui.model.FamilyScreenUiState
-import com.gonecrzy.gpstrack.ui.model.toFamilyMemberUiModel
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +17,7 @@ class FamilyViewModel(
     private val _uiState = MutableStateFlow(FamilyScreenUiState())
     val uiState = _uiState.asStateFlow()
     private var refreshJob: Job? = null
+    private val refreshCoordinator = MemberRefreshCoordinator()
 
     init {
         observeMembers()
@@ -41,26 +36,30 @@ class FamilyViewModel(
                     errorMessage = null,
                 )
             }
-            runCatching { repository.refreshMembers() }
-                .onFailure {
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            errorMessage = "Unable to refresh family locations right now.",
-                        )
-                    }
-                }
+            val result = refreshCoordinator.load(
+                refreshMembers = repository::refreshMembers,
+                currentMembers = repository::currentMembers,
+                loadLatestLocation = { memberId -> repository.loadLatestLocation(memberId) },
+                emptyStateErrorMessage = "Unable to refresh family locations right now.",
+            )
+            _uiState.update { state ->
+                state.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    members = result.members,
+                    errorMessage = result.errorMessage,
+                )
+            }
         }
     }
 
     private fun observeMembers() {
         viewModelScope.launch {
             repository.observeMembers().collectLatest { members ->
-                val latestLocations = loadLatestLocations(members)
-                val uiMembers = members.map { member ->
-                    member.toFamilyMemberUiModel(latestLocation = latestLocations[member.id])
-                }
+                val uiMembers = refreshCoordinator.mapMembers(
+                    members = members,
+                    loadLatestLocation = { memberId -> repository.loadLatestLocation(memberId) },
+                )
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,
@@ -70,19 +69,6 @@ class FamilyViewModel(
                     )
                 }
             }
-        }
-    }
-
-    private suspend fun loadLatestLocations(
-        members: List<MemberSummary>,
-    ): Map<String, LocationPoint?> {
-        if (members.isEmpty()) {
-            return emptyMap()
-        }
-        return coroutineScope {
-            members.map { member ->
-                async { member.id to runCatching { repository.loadLatestLocation(member.id) }.getOrNull() }
-            }.awaitAll().toMap()
         }
     }
 }

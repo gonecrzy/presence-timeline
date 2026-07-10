@@ -44,12 +44,10 @@ import com.gonecrzy.gpstrack.data.model.PlaceSearchCandidate
 import com.gonecrzy.gpstrack.data.model.PlaceSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.ui.components.AutoRefreshEffect
+import com.gonecrzy.gpstrack.ui.map.buildRadiusRing
 import com.gonecrzy.gpstrack.ui.map.ensureCircleLayer
 import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
 import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -421,21 +419,5 @@ private fun renderPlacePreview(
         )?.let { position ->
             map.cameraPosition = CameraPosition.Builder(position).build()
         }
-    }
-}
-
-private fun buildRadiusRing(
-    latitude: Double,
-    longitude: Double,
-    radiusMeters: Double,
-    steps: Int = 36,
-): List<LatLng> {
-    val earthRadiusMeters = 6_371_000.0
-    val latitudeRadians = Math.toRadians(latitude)
-    return (0..steps).map { step ->
-        val angle = 2 * PI * step / steps
-        val latitudeOffset = (radiusMeters / earthRadiusMeters) * (180 / PI) * sin(angle)
-        val longitudeOffset = (radiusMeters / earthRadiusMeters) * (180 / PI) * cos(angle) / cos(latitudeRadians)
-        LatLng(latitude + latitudeOffset, longitude + longitudeOffset)
     }
 }

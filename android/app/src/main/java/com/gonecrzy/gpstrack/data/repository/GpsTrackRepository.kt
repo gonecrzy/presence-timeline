@@ -74,6 +74,8 @@ class GpsTrackRepository(
         }
     }
 
+    suspend fun currentMembers(): List<MemberSummary> = observeMembers().first()
+
     suspend fun refreshMembers() {
         val api = api()
         val members = api.listMembers().items

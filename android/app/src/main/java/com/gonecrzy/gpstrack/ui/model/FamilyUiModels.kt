@@ -15,6 +15,7 @@ data class MapScreenUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val members: List<FamilyMemberUiModel> = emptyList(),
+    val places: List<MapPlaceUiModel> = emptyList(),
     val selectedMemberId: String? = null,
     val errorMessage: String? = null,
 )
@@ -34,6 +35,16 @@ data class FamilyMemberUiModel(
     val latitude: Double?,
     val longitude: Double?,
     val accuracyMeters: Double?,
+)
+
+@Immutable
+data class MapPlaceUiModel(
+    val id: String,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radiusMeters: Double,
+    val isSafeZone: Boolean,
 )
 
 enum class MemberRole {

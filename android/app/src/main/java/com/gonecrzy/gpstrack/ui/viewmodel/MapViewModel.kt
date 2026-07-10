@@ -2,14 +2,9 @@ package com.gonecrzy.gpstrack.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gonecrzy.gpstrack.data.model.LocationPoint
-import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
+import com.gonecrzy.gpstrack.ui.model.MapPlaceUiModel
 import com.gonecrzy.gpstrack.ui.model.MapScreenUiState
-import com.gonecrzy.gpstrack.ui.model.toFamilyMemberUiModel
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,9 +18,11 @@ class MapViewModel(
     private val _uiState = MutableStateFlow(MapScreenUiState())
     val uiState = _uiState.asStateFlow()
     private var refreshJob: Job? = null
+    private val refreshCoordinator = MemberRefreshCoordinator()
 
     init {
         observeMembers()
+        observePlaces()
         refresh()
     }
 
@@ -41,16 +38,24 @@ class MapViewModel(
                     errorMessage = null,
                 )
             }
-            runCatching { repository.refreshMembers() }
-                .onFailure {
-                    _uiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            errorMessage = "Unable to refresh the live map right now.",
-                        )
-                    }
-                }
+            runCatching { repository.refreshPlaces() }
+            val result = refreshCoordinator.load(
+                refreshMembers = repository::refreshMembers,
+                currentMembers = repository::currentMembers,
+                loadLatestLocation = { memberId -> repository.loadLatestLocation(memberId) },
+                emptyStateErrorMessage = "Unable to refresh the live map right now.",
+            )
+            _uiState.update { state ->
+                val selectedMemberId = state.selectedMemberId
+                    ?.takeIf { selectedId -> result.members.any { member -> member.id == selectedId } }
+                state.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    members = result.members,
+                    selectedMemberId = selectedMemberId,
+                    errorMessage = result.errorMessage,
+                )
+            }
         }
     }
 
@@ -63,10 +68,10 @@ class MapViewModel(
     private fun observeMembers() {
         viewModelScope.launch {
             repository.observeMembers().collectLatest { members ->
-                val latestLocations = loadLatestLocations(members)
-                val uiMembers = members.map { member ->
-                    member.toFamilyMemberUiModel(latestLocation = latestLocations[member.id])
-                }
+                val uiMembers = refreshCoordinator.mapMembers(
+                    members = members,
+                    loadLatestLocation = { memberId -> repository.loadLatestLocation(memberId) },
+                )
                 _uiState.update { state ->
                     val selectedMemberId = state.selectedMemberId
                         ?.takeIf { selectedId -> uiMembers.any { member -> member.id == selectedId } }
@@ -82,16 +87,24 @@ class MapViewModel(
         }
     }
 
-    private suspend fun loadLatestLocations(
-        members: List<MemberSummary>,
-    ): Map<String, LocationPoint?> {
-        if (members.isEmpty()) {
-            return emptyMap()
-        }
-        return coroutineScope {
-            members.map { member ->
-                async { member.id to runCatching { repository.loadLatestLocation(member.id) }.getOrNull() }
-            }.awaitAll().toMap()
+    private fun observePlaces() {
+        viewModelScope.launch {
+            repository.observePlaces().collectLatest { places ->
+                _uiState.update { state ->
+                    state.copy(
+                        places = places.map { place ->
+                            MapPlaceUiModel(
+                                id = place.id,
+                                name = place.name,
+                                latitude = place.latitude,
+                                longitude = place.longitude,
+                                radiusMeters = place.radiusM,
+                                isSafeZone = place.isSafeZone,
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 }
