@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -67,7 +68,10 @@ private const val PlacePreviewRingLayerId = "gpstrack-place-preview-ring"
 private const val PlacePreviewCenterLayerId = "gpstrack-place-preview-center"
 
 @Composable
-fun PlacesScreen(repository: GpsTrackRepository) {
+fun PlacesScreen(
+    repository: GpsTrackRepository,
+    contentPadding: PaddingValues = PaddingValues(),
+) {
     val places by repository.observePlaces().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var editingPlace by remember { mutableStateOf<PlaceSummary?>(null) }
@@ -109,8 +113,15 @@ fun PlacesScreen(repository: GpsTrackRepository) {
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 12.dp,
+            end = 16.dp,
+            bottom = contentPadding.calculateBottomPadding() + 24.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {

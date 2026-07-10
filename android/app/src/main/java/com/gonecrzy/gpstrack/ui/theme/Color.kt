@@ -1,9 +1,36 @@
 package com.gonecrzy.gpstrack.ui.theme
 
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-val Ink = Color(0xFF0D1B2A)
-val Ocean = Color(0xFF1B4965)
-val Sky = Color(0xFF5FA8D3)
-val Sand = Color(0xFFEAE7DC)
-val Alert = Color(0xFFC44536)
+@Immutable
+data class AppThemeColors(
+    val backgroundPrimary: Color,
+    val backgroundSecondary: Color,
+    val surfacePrimary: Color,
+    val surfaceElevated: Color,
+    val accentPrimary: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val success: Color,
+    val warning: Color,
+    val error: Color,
+    val divider: Color,
+)
+
+val DarkThemeColors = AppThemeColors(
+    backgroundPrimary = Color(0xFF07111F),
+    backgroundSecondary = Color(0xFF0E1A2B),
+    surfacePrimary = Color(0xFF102132),
+    surfaceElevated = Color(0xFF162B40),
+    accentPrimary = Color(0xFF58B8FF),
+    textPrimary = Color(0xFFF5F8FC),
+    textSecondary = Color(0xFFA7B6C8),
+    success = Color(0xFF3DDC97),
+    warning = Color(0xFFFFB84D),
+    error = Color(0xFFFF6B6B),
+    divider = Color(0x24FFFFFF),
+)
+
+internal val LocalAppThemeColors = staticCompositionLocalOf { DarkThemeColors }

@@ -1,7 +1,11 @@
 package com.gonecrzy.gpstrack.ui
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Place
@@ -9,10 +13,13 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -22,11 +29,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.gonecrzy.gpstrack.AppContainer
 import com.gonecrzy.gpstrack.ui.navigation.AppDestination
+import com.gonecrzy.gpstrack.ui.screens.HistoryScreen
 import com.gonecrzy.gpstrack.ui.screens.MapScreen
 import com.gonecrzy.gpstrack.ui.screens.MemberDetailScreen
 import com.gonecrzy.gpstrack.ui.screens.MembersScreen
 import com.gonecrzy.gpstrack.ui.screens.PlacesScreen
 import com.gonecrzy.gpstrack.ui.screens.SettingsScreen
+import com.gonecrzy.gpstrack.ui.theme.appColors
 
 @Composable
 fun GpsTrackApp(container: AppContainer) {
@@ -35,19 +44,24 @@ fun GpsTrackApp(container: AppContainer) {
         AppDestination.Members,
         AppDestination.Map,
         AppDestination.Places,
+        AppDestination.History,
         AppDestination.Settings,
     )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = androidx.compose.material3.MaterialTheme.appColors.surfacePrimary.copy(alpha = 0.98f),
+            ) {
                 destinations.forEach { destination ->
                     NavigationBarItem(
-                        selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true,
+                        selected = currentDestination.isTopLevelSelected(destination),
                         onClick = {
-                            navController.navigate(destination.route) {
+                            navController.navigate(destination.rootRoute) {
                                 popUpTo(navController.graph.startDestinationId) {
                                     saveState = true
                                 }
@@ -55,29 +69,39 @@ fun GpsTrackApp(container: AppContainer) {
                                 restoreState = true
                             }
                         },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            selectedIconColor = androidx.compose.material3.MaterialTheme.appColors.accentPrimary,
+                            selectedTextColor = androidx.compose.material3.MaterialTheme.appColors.accentPrimary,
+                            unselectedIconColor = androidx.compose.material3.MaterialTheme.appColors.textSecondary,
+                            unselectedTextColor = androidx.compose.material3.MaterialTheme.appColors.textSecondary,
+                        ),
                         icon = {
                             when (destination) {
                                 AppDestination.Members -> Icon(Icons.Outlined.People, contentDescription = null)
                                 AppDestination.Map -> Icon(Icons.Outlined.Map, contentDescription = null)
                                 AppDestination.Places -> Icon(Icons.Outlined.Place, contentDescription = null)
+                                AppDestination.History -> Icon(Icons.Outlined.History, contentDescription = null)
                                 AppDestination.Settings -> Icon(Icons.Outlined.Settings, contentDescription = null)
                                 AppDestination.MemberDetail -> Unit
                             }
                         },
-                        label = { androidx.compose.material3.Text(destination.label) },
+                        label = { Text(destination.label) },
                     )
                 }
             }
         },
     ) { innerPadding ->
+        val screenPadding = PaddingValues(bottom = innerPadding.calculateBottomPadding())
         NavHost(
             navController = navController,
             startDestination = AppDestination.Members.route,
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier.fillMaxSize(),
         ) {
             composable(AppDestination.Members.route) {
                 MembersScreen(
                     repository = container.repository,
+                    contentPadding = screenPadding,
                     onMemberSelected = { navController.navigate(AppDestination.MemberDetail.build(it)) },
                 )
             }
@@ -85,14 +109,30 @@ fun GpsTrackApp(container: AppContainer) {
                 MapScreen(
                     repository = container.repository,
                     preferences = container.preferences,
+                    contentPadding = screenPadding,
+                    onFamilySelected = {
+                        navController.navigate(AppDestination.Members.rootRoute) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                     onMemberSelected = { navController.navigate(AppDestination.MemberDetail.build(it)) },
                 )
             }
             composable(AppDestination.Places.route) {
-                PlacesScreen(repository = container.repository)
+                PlacesScreen(
+                    repository = container.repository,
+                    contentPadding = screenPadding,
+                )
+            }
+            composable(AppDestination.History.route) {
+                HistoryScreen(contentPadding = screenPadding)
             }
             composable(AppDestination.Settings.route) {
-                SettingsScreen(preferences = container.preferences)
+                SettingsScreen(
+                    preferences = container.preferences,
+                    contentPadding = screenPadding,
+                )
             }
             composable(
                 route = AppDestination.MemberDetail.route,
@@ -105,4 +145,10 @@ fun GpsTrackApp(container: AppContainer) {
             }
         }
     }
+}
+
+private fun NavDestination?.isTopLevelSelected(destination: AppDestination): Boolean {
+    return this?.hierarchy?.any { navDestination ->
+        navDestination.route?.startsWith(destination.rootRoute) == true
+    } == true
 }

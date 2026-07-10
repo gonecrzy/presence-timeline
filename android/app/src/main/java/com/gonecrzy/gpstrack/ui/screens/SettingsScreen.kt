@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,7 +26,10 @@ import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(preferences: AppPreferences) {
+fun SettingsScreen(
+    preferences: AppPreferences,
+    contentPadding: PaddingValues = PaddingValues(),
+) {
     val baseUrl by preferences.baseUrl.collectAsState(initial = com.gonecrzy.gpstrack.BuildConfig.DEFAULT_BASE_URL)
     val mapStyleUrl by preferences.mapStyleUrl.collectAsState(initial = com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL)
     val scope = rememberCoroutineScope()
@@ -34,8 +38,15 @@ fun SettingsScreen(preferences: AppPreferences) {
     var mapStyleDraft by remember(mapStyleUrl) { mutableStateOf(mapStyleUrl) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 12.dp,
+            end = 16.dp,
+            bottom = contentPadding.calculateBottomPadding() + 24.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {

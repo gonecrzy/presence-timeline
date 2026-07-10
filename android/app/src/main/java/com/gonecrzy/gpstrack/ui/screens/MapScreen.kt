@@ -3,12 +3,12 @@ package com.gonecrzy.gpstrack.ui.screens
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.Typeface
 import android.os.Bundle
-import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,50 +16,59 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gonecrzy.gpstrack.data.model.LocationPoint
-import com.gonecrzy.gpstrack.data.model.LocationStop
-import com.gonecrzy.gpstrack.data.model.MemberSummary
 import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.data.settings.AppPreferences
-import com.gonecrzy.gpstrack.ui.format.formatDurationSeconds
-import com.gonecrzy.gpstrack.ui.format.formatPhoneDateTime
-import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
-import com.gonecrzy.gpstrack.ui.map.ensureLineLayer
-import com.gonecrzy.gpstrack.ui.map.ensureSymbolLayer
-import com.gonecrzy.gpstrack.ui.map.markerIconProperties
-import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.temporal.ChronoUnit
+import com.gonecrzy.gpstrack.ui.components.EmptyState
+import com.gonecrzy.gpstrack.ui.components.ErrorState
+import com.gonecrzy.gpstrack.ui.components.LoadingState
+import com.gonecrzy.gpstrack.ui.components.MapControlButton
+import com.gonecrzy.gpstrack.ui.components.MemberPreviewSheet
+import com.gonecrzy.gpstrack.ui.model.FamilyMemberUiModel
+import com.gonecrzy.gpstrack.ui.model.PresenceState
+import com.gonecrzy.gpstrack.ui.theme.appColors
+import com.gonecrzy.gpstrack.ui.theme.spacing
+import com.gonecrzy.gpstrack.ui.viewmodel.MapViewModel
+import com.gonecrzy.gpstrack.ui.viewmodel.simpleViewModelFactory
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
@@ -67,249 +76,239 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.style.expressions.Expression.get
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import com.gonecrzy.gpstrack.ui.map.MapSnapshotCalculator
+import com.gonecrzy.gpstrack.ui.map.ensureSymbolLayer
+import com.gonecrzy.gpstrack.ui.map.markerIconProperties
+import com.gonecrzy.gpstrack.ui.map.upsertGeoJsonSource
 
-private const val RouteWindowHours = 24L
-private const val DwellRadiusMeters = 250.0
-private const val MinimumDisplaySegmentMeters = 25.0
-private const val MaximumAutoZoom = 12.0
 private const val MarkerGroupingRadiusMeters = 40.0
 private const val MarkerSourceId = "gpstrack-family-markers"
 private const val MarkerLayerId = "gpstrack-family-marker-layer"
-private const val RouteSourceId = "gpstrack-live-route"
-private const val RouteLayerId = "gpstrack-live-route-layer"
+private const val SelectedMemberZoom = 14.0
+private const val MaximumAutoZoom = 12.5
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
     repository: GpsTrackRepository,
     preferences: AppPreferences,
+    onFamilySelected: () -> Unit,
     onMemberSelected: (String) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
-    val context = LocalContext.current
-    val members by repository.observeMembers().collectAsState(initial = emptyList())
-    val mapStyleUrl by preferences.mapStyleUrl.collectAsState(
-        initial = com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL,
+    val factory = remember(repository) {
+        simpleViewModelFactory { MapViewModel(repository) }
+    }
+    val viewModel: MapViewModel = viewModel(factory = factory)
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val mapStyleUrl by preferences.mapStyleUrl.collectAsStateWithLifecycle(
+        initialValue = com.gonecrzy.gpstrack.BuildConfig.DEFAULT_MAP_STYLE_URL,
     )
-    var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        runCatching { repository.refreshMembers() }
+    val colors = MaterialTheme.appColors
+    val spacing = MaterialTheme.spacing
+    val selectedMember = uiState.members.firstOrNull { member -> member.id == uiState.selectedMemberId }
+    var recenterToken by rememberSaveable { mutableIntStateOf(0) }
+    val staleCount = uiState.members.count { member ->
+        member.presenceState == PresenceState.STALE || member.presenceState == PresenceState.OFFLINE
     }
-
-    val latestLocations by produceState(
-        initialValue = emptyMap<String, LocationPoint>(),
-        key1 = members.map { it.id to it.lastSeenAt },
-    ) {
-        value = members.mapNotNull { member ->
-            runCatching { repository.loadLatestLocation(member.id) }.getOrNull()?.let { member.id to it }
-        }.toMap()
-    }
-
-    LaunchedEffect(members, selectedMemberId) {
-        if (selectedMemberId != null && members.none { it.id == selectedMemberId }) {
-            selectedMemberId = null
-        }
-    }
-
-    val selectedMember = members.firstOrNull { it.id == selectedMemberId }
-    val routePoints by produceState(
-        initialValue = emptyList<LocationPoint>(),
-        key1 = selectedMemberId,
-        key2 = selectedMember?.lastSeenAt,
-    ) {
-        val activeMemberId = selectedMemberId
-        if (activeMemberId == null) {
-            value = emptyList()
-            return@produceState
-        }
-
-        val end = Instant.now()
-        val start = end.minus(RouteWindowHours, ChronoUnit.HOURS)
-        value = runCatching {
-            val utcDate = end.atZone(ZoneOffset.UTC).toLocalDate()
-            val candidateDates = listOf(utcDate.minusDays(1), utcDate).distinct()
-            val trips = candidateDates.flatMap { date ->
-                repository.loadTrips(activeMemberId, date.toString())
-            }.sortedBy { it.startedAt }
-
-            val routes = trips.mapNotNull { trip ->
-                val tripStartedAt = runCatching { Instant.parse(trip.startedAt) }.getOrNull()
-                val tripEndedAt = runCatching { Instant.parse(trip.endedAt ?: trip.startedAt) }.getOrNull()
-                if (tripStartedAt == null || tripEndedAt == null || tripEndedAt.isBefore(start) || tripStartedAt.isAfter(end)) {
-                    null
-                } else {
-                    repository.loadTripRoute(activeMemberId, trip.id).points.map { point ->
-                        LocationPoint(
-                            memberId = point.memberId,
-                            observedAt = point.observedAt,
-                            latitude = point.latitude,
-                            longitude = point.longitude,
-                            accuracyM = point.accuracyM,
-                            batteryLevel = point.batteryLevel,
-                            sourceEntityId = point.sourceEntityId,
-                        )
-                    }
-                }
-            }
-
-            MapSnapshotCalculator.assembleTripRoutePoints(
-                routes = routes,
-                windowStart = start,
-                windowEnd = end,
-            )
-        }.getOrDefault(emptyList())
-    }
-    val selectedStops by produceState(
-        initialValue = emptyList<LocationStop>(),
-        key1 = selectedMemberId,
-        key2 = selectedMember?.lastSeenAt,
-    ) {
-        val activeMemberId = selectedMemberId
-        if (activeMemberId == null) {
-            value = emptyList()
-            return@produceState
-        }
-
-        val end = Instant.now()
-        val start = end.minus(RouteWindowHours, ChronoUnit.HOURS)
-        value = runCatching {
-            repository.loadMemberStops(activeMemberId, start.toString(), end.toString())
-        }.getOrDefault(emptyList()).sortedBy { it.startedAt }
-    }
-
-    val selectedLatestLocation = selectedMemberId?.let(latestLocations::get)
-    val dwellStart = remember(selectedStops) {
-        selectedStops.lastOrNull()?.startedAt?.let { Instant.parse(it) }
-    }
-    val displayRoutePoints = remember(routePoints) {
-        MapSnapshotCalculator.buildDisplayRoute(
-            points = routePoints,
-            dwellRadiusMeters = DwellRadiusMeters,
-            minimumSegmentMeters = MinimumDisplaySegmentMeters,
+    val mapVisualColors = remember(colors) {
+        MapVisualColors(
+            background = colors.surfacePrimary.toArgb(),
+            markerFill = colors.surfaceElevated.toArgb(),
+            accent = colors.accentPrimary.toArgb(),
+            live = colors.success.toArgb(),
+            stale = colors.warning.toArgb(),
+            offline = colors.textSecondary.toArgb(),
+            text = colors.textPrimary.toArgb(),
+            white = android.graphics.Color.WHITE,
         )
     }
-    val selectedMemberStates = members.map { member ->
-        MapMemberState(member = member, latestLocation = latestLocations[member.id])
-    }
-    val currentStop = selectedStops.lastOrNull()
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    LaunchedEffect(selectedMember?.id) {
+        if (selectedMember != null) {
+            recenterToken += 1
+        }
+    }
+
+    BackHandler(enabled = selectedMember != null) {
+        viewModel.selectMember(null)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.backgroundPrimary),
     ) {
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Live Map", style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        if (selectedMember != null) {
-                            "Showing ${selectedMember.displayName}'s last $RouteWindowHours hours with current family positions."
-                        } else {
-                            "Showing current family positions. Tap a family member to load their last $RouteWindowHours hours."
+        MapSurface(
+            context = LocalContext.current,
+            mapStyleUrl = mapStyleUrl,
+            members = uiState.members,
+            selectedMemberId = uiState.selectedMemberId,
+            recenterToken = recenterToken,
+            visualColors = mapVisualColors,
+            onMarkerSelected = { memberId -> viewModel.selectMember(memberId) },
+            onMapTapped = { viewModel.selectMember(null) },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        when {
+            uiState.isLoading && uiState.members.isEmpty() -> {
+                LoadingOverlay(label = "Loading live map")
+            }
+
+            uiState.errorMessage != null && uiState.members.isEmpty() -> {
+                CenterOverlay(
+                    contentPadding = contentPadding,
+                    content = {
+                        ErrorState(
+                            title = "Unable to load the live map.",
+                            message = "Current family locations could not be loaded. Try refreshing.",
+                            onRetry = viewModel::refresh,
+                        )
+                    },
+                )
+            }
+
+            uiState.members.isEmpty() -> {
+                CenterOverlay(
+                    contentPadding = contentPadding,
+                    content = {
+                        EmptyState(
+                            title = "No family members are available.",
+                            message = "Check the family configuration or refresh.",
+                            actionLabel = "Refresh",
+                            onAction = viewModel::refresh,
+                        )
+                    },
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(horizontal = spacing.large, vertical = spacing.medium),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.medium)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MapControlButton(
+                        contentDescription = "Open family list",
+                        onClick = onFamilySelected,
+                        icon = {
+                            androidx.compose.material3.Icon(
+                                imageVector = Icons.Outlined.People,
+                                contentDescription = null,
+                                tint = colors.textPrimary,
+                            )
                         },
-                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    if (selectedMember != null) {
-                        TextButton(onClick = { selectedMemberId = null }) {
-                            Text("Show Family Overview")
-                        }
-                    }
-                    if (selectedMember != null && selectedLatestLocation != null) {
+                    MapControlButton(
+                        contentDescription = "Refresh live map",
+                        onClick = viewModel::refresh,
+                        icon = {
+                            androidx.compose.material3.Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = null,
+                                tint = colors.textPrimary,
+                            )
+                        },
+                    )
+                }
+                if (uiState.errorMessage != null && uiState.members.isNotEmpty()) {
+                    Surface(
+                        color = colors.surfacePrimary.copy(alpha = 0.94f),
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
                         Text(
-                            "Arrived ${formatRelativeDuration(dwellStart)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            currentStop?.let(::formatStopLabel) ?: (selectedMember.currentLocationLabel ?: "Location updating"),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            "Last Update ${formatPhoneDateTime(selectedLatestLocation.observedAt)}",
+                            text = "Showing the last known family locations.",
+                            modifier = Modifier.padding(horizontal = spacing.large, vertical = spacing.medium),
                             style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary,
                         )
                     }
                 }
             }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(spacing.medium),
+                horizontalAlignment = Alignment.Start,
+            ) {
+                MapControlButton(
+                    contentDescription = "Recenter family map",
+                    onClick = { recenterToken += 1 },
+                    icon = {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Outlined.MyLocation,
+                            contentDescription = null,
+                            tint = colors.textPrimary,
+                        )
+                    },
+                )
+                Surface(
+                    color = colors.surfacePrimary.copy(alpha = 0.94f),
+                    shape = CircleShape,
+                ) {
+                    Text(
+                        text = buildStatusPillLabel(uiState.members.size, staleCount, uiState.isRefreshing),
+                        modifier = Modifier.padding(horizontal = spacing.large, vertical = spacing.small),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.textPrimary,
+                    )
+                }
+            }
         }
-        item {
-            MapSurface(
-                context = context,
-                mapStyleUrl = mapStyleUrl,
-                members = selectedMemberStates,
-                selectedMemberId = selectedMemberId,
-                routePoints = displayRoutePoints,
-                onMarkerSelected = { selectedMemberId = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(360.dp),
+    }
+
+    if (selectedMember != null) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.selectMember(null) },
+            containerColor = colors.surfacePrimary,
+            dragHandle = null,
+            contentColor = colors.textPrimary,
+            tonalElevation = 0.dp,
+        ) {
+            MemberPreviewSheet(
+                member = selectedMember,
+                onViewToday = { onMemberSelected(selectedMember.id) },
+                onOpenDetails = { onMemberSelected(selectedMember.id) },
+                onRecenter = { recenterToken += 1 },
+                modifier = Modifier.navigationBarsPadding(),
             )
         }
-        items(selectedMemberStates, key = { it.member.id }) { state ->
-            val isSelected = state.member.id == selectedMemberId
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { selectedMemberId = state.member.id },
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = buildString {
-                            append(state.member.displayName)
-                            if (isSelected) append(" · selected")
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        state.latestLocation?.let {
-                            if (isSelected) {
-                                val currentLabel = currentStop?.let(::formatStopLabel)
-                                    ?: state.member.currentLocationLabel
-                                    ?: "Location updating"
-                                "Current: $currentLabel · Arrived ${formatRelativeDuration(dwellStart)}"
-                            } else {
-                                val currentLabel = state.member.currentLocationLabel ?: "Location updating"
-                                "Current: $currentLabel · Tap to load route"
-                            }
-                        } ?: "No current location available",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { selectedMemberId = state.member.id }) {
-                            Text(if (isSelected) "Viewing Route" else "View Route")
-                        }
-                        if (isSelected) {
-                            TextButton(onClick = { selectedMemberId = null }) {
-                                Text("Family View")
-                            }
-                        }
-                        TextButton(onClick = { onMemberSelected(state.member.id) }) {
-                            Text("Open Details")
-                        }
-                    }
-                }
-            }
-        }
-        if (selectedMember != null && selectedStops.isNotEmpty()) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Recent Stops", style = MaterialTheme.typography.titleMedium)
-                        selectedStops.asReversed().take(5).forEach { stop ->
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(formatStopLabel(stop), style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "Stayed ${formatDurationSeconds(stop.durationSeconds)} · Arrived ${formatRelativeDuration(stop.startedAt)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    }
+}
+
+@Composable
+private fun LoadingOverlay(label: String) {
+    CenterOverlay(contentPadding = PaddingValues(), content = { LoadingState(label = label) })
+}
+
+@Composable
+private fun CenterOverlay(
+    contentPadding: PaddingValues,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding()
+            .padding(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = contentPadding.calculateBottomPadding() + 16.dp,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
@@ -317,10 +316,12 @@ fun MapScreen(
 private fun MapSurface(
     context: Context,
     mapStyleUrl: String,
-    members: List<MapMemberState>,
+    members: List<FamilyMemberUiModel>,
     selectedMemberId: String?,
-    routePoints: List<LocationPoint>,
+    recenterToken: Int,
+    visualColors: MapVisualColors,
     onMarkerSelected: (String) -> Unit,
+    onMapTapped: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -330,22 +331,39 @@ private fun MapSurface(
             onCreate(Bundle())
         }
     }
+    val lastAppliedRecenterToken = remember { mutableIntStateOf(Int.MIN_VALUE) }
+    val lastHadLocations = remember { mutableIntStateOf(0) }
 
-    DisposableEffect(lifecycleOwner, mapView) {
+    DisposableEffect(lifecycleOwner, mapView, onMarkerSelected, onMapTapped) {
         var mapReference: MapLibreMap? = null
         val clickListener = MapLibreMap.OnMapClickListener { latLng ->
             val map = mapReference ?: return@OnMapClickListener false
             val screenPoint = map.projection.toScreenLocation(latLng)
-            val selectedMember = map.queryRenderedFeatures(
+            val feature = map.queryRenderedFeatures(
                 PointF(screenPoint.x, screenPoint.y),
                 MarkerLayerId,
-            ).firstOrNull { it.hasNonNullValueForProperty("memberId") }
-                ?.getStringProperty("memberId")
-            if (selectedMember != null) {
-                onMarkerSelected(selectedMember)
-                true
-            } else {
-                false
+            ).firstOrNull()
+
+            when {
+                feature?.hasNonNullValueForProperty("memberId") == true -> {
+                    onMarkerSelected(feature.getStringProperty("memberId"))
+                    true
+                }
+
+                feature?.hasNonNullValueForProperty("clusterCount") == true -> {
+                    map.animateCamera(
+                        CameraUpdateFactory.newLatLngZoom(
+                            latLng,
+                            (map.cameraPosition.zoom + 1.5).coerceAtMost(16.0),
+                        ),
+                    )
+                    true
+                }
+
+                else -> {
+                    onMapTapped()
+                    false
+                }
             }
         }
 
@@ -371,74 +389,86 @@ private fun MapSurface(
         }
     }
 
-    Box(modifier = modifier) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { mapView },
-            update = {
-                it.getMapAsync { map ->
-                    map.setMinZoomPreference(0.0)
-                    if (map.style?.uri != mapStyleUrl) {
-                        map.setStyle(mapStyleUrl) {
-                            renderMap(
-                                context = context,
-                                map = map,
-                                members = members,
-                                selectedMemberId = selectedMemberId,
-                                routePoints = routePoints,
-                            )
-                        }
-                    } else {
+    AndroidView(
+        modifier = modifier,
+        factory = { mapView },
+        update = { view ->
+            view.getMapAsync { map ->
+                map.setMinZoomPreference(1.0)
+                map.uiSettings.isCompassEnabled = false
+                val hasLocations = members.any { member -> member.latitude != null && member.longitude != null }
+                val shouldAutoCenter = hasLocations && lastHadLocations.intValue == 0
+                lastHadLocations.intValue = if (hasLocations) 1 else 0
+
+                if (map.style?.uri != mapStyleUrl) {
+                    map.setStyle(mapStyleUrl) {
                         renderMap(
                             context = context,
                             map = map,
                             members = members,
                             selectedMemberId = selectedMemberId,
-                            routePoints = routePoints,
+                            visualColors = visualColors,
                         )
+                        applyCamera(
+                            map = map,
+                            members = members,
+                            selectedMemberId = selectedMemberId,
+                        )
+                        lastAppliedRecenterToken.intValue = recenterToken
+                    }
+                } else {
+                    renderMap(
+                        context = context,
+                        map = map,
+                        members = members,
+                        selectedMemberId = selectedMemberId,
+                        visualColors = visualColors,
+                    )
+                    if (shouldAutoCenter || recenterToken != lastAppliedRecenterToken.intValue) {
+                        applyCamera(
+                            map = map,
+                            members = members,
+                            selectedMemberId = selectedMemberId,
+                        )
+                        lastAppliedRecenterToken.intValue = recenterToken
                     }
                 }
-            },
-        )
-    }
+            }
+        },
+    )
 }
 
 private fun renderMap(
     context: Context,
     map: MapLibreMap,
-    members: List<MapMemberState>,
+    members: List<FamilyMemberUiModel>,
     selectedMemberId: String?,
-    routePoints: List<LocationPoint>,
+    visualColors: MapVisualColors,
 ) {
     val style = map.style ?: return
-
-    val boundsBuilder = LatLngBounds.Builder()
-    var pointCount = 0
     val markerFeatures = mutableListOf<Feature>()
-
     val markerClusters = MapSnapshotCalculator.groupMarkerPoints(
-        points = members.mapNotNull { state ->
-            state.latestLocation?.let { latest ->
-                MapSnapshotCalculator.MarkerPoint(
-                    item = state,
-                    latitude = latest.latitude,
-                    longitude = latest.longitude,
-                )
-            }
+        points = members.mapNotNull { member ->
+            val latitude = member.latitude ?: return@mapNotNull null
+            val longitude = member.longitude ?: return@mapNotNull null
+            MapSnapshotCalculator.MarkerPoint(
+                item = member,
+                latitude = latitude,
+                longitude = longitude,
+            )
         },
         groupingRadiusMeters = MarkerGroupingRadiusMeters,
     )
 
     markerClusters.forEach { cluster ->
-        val position = LatLng(cluster.latitude, cluster.longitude)
-        val clusterIsSelected = cluster.items.any { it.member.id == selectedMemberId }
+        val clusterIsSelected = cluster.items.any { member -> member.id == selectedMemberId }
         val isSingleMember = cluster.items.size == 1
-        val representative = cluster.items.first()
+        val representative = cluster.items.firstOrNull() ?: return@forEach
         val iconKey = if (isSingleMember) {
             memberMarkerImageKey(
-                displayName = representative.member.displayName,
+                initials = representative.initials,
                 isSelected = clusterIsSelected,
-                isChild = representative.member.isChild,
+                presenceState = representative.presenceState,
             )
         } else {
             clusterMarkerImageKey(count = cluster.items.size, isSelected = clusterIsSelected)
@@ -448,15 +478,17 @@ private fun renderMap(
             if (isSingleMember) {
                 createMemberMarkerBitmap(
                     context = context,
-                    displayName = representative.member.displayName,
+                    initials = representative.initials,
+                    presenceState = representative.presenceState,
                     isSelected = clusterIsSelected,
-                    isChild = representative.member.isChild,
+                    visualColors = visualColors,
                 )
             } else {
                 createClusterMarkerBitmap(
                     context = context,
                     count = cluster.items.size,
                     isSelected = clusterIsSelected,
+                    visualColors = visualColors,
                 )
             },
         )
@@ -464,12 +496,12 @@ private fun renderMap(
         val feature = Feature.fromGeometry(Point.fromLngLat(cluster.longitude, cluster.latitude)).apply {
             addStringProperty("iconKey", iconKey)
             if (isSingleMember) {
-                addStringProperty("memberId", representative.member.id)
+                addStringProperty("memberId", representative.id)
+            } else {
+                addNumberProperty("clusterCount", cluster.items.size)
             }
         }
         markerFeatures += feature
-        boundsBuilder.include(position)
-        pointCount += 1
     }
 
     style.upsertGeoJsonSource(
@@ -481,96 +513,87 @@ private fun renderMap(
         sourceId = MarkerSourceId,
         properties = markerIconProperties(get("iconKey")),
     )
+}
 
-    val routeGeometry = if (routePoints.size >= 2) {
-        val path = routePoints.map { point ->
-            boundsBuilder.include(LatLng(point.latitude, point.longitude))
-            Point.fromLngLat(point.longitude, point.latitude)
-        }
-        pointCount += path.size
-        FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(path)))
-    } else {
-        FeatureCollection.fromFeatures(emptyList())
+private fun applyCamera(
+    map: MapLibreMap,
+    members: List<FamilyMemberUiModel>,
+    selectedMemberId: String?,
+) {
+    val selectedMember = members.firstOrNull { member ->
+        member.id == selectedMemberId && member.latitude != null && member.longitude != null
     }
-    style.upsertGeoJsonSource(RouteSourceId, routeGeometry)
-    style.ensureLineLayer(
-        layerId = RouteLayerId,
-        sourceId = RouteSourceId,
-        color = Color.parseColor("#58C4DD"),
-        width = 5f,
-        belowLayerId = MarkerLayerId,
-    )
+    if (selectedMember != null) {
+        map.animateCamera(
+            CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder()
+                    .target(LatLng(selectedMember.latitude!!, selectedMember.longitude!!))
+                    .zoom(SelectedMemberZoom)
+                    .build(),
+            ),
+        )
+        return
+    }
 
+    val positions = members.mapNotNull { member ->
+        val latitude = member.latitude ?: return@mapNotNull null
+        val longitude = member.longitude ?: return@mapNotNull null
+        LatLng(latitude, longitude)
+    }
     when {
-        pointCount == 0 -> {
+        positions.isEmpty() -> {
             map.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(20.0, 0.0))
-                .zoom(1.0)
+                .zoom(1.2)
                 .build()
         }
 
-        pointCount == 1 -> {
-            val target = markerClusters.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
-                ?: routePoints.lastOrNull()?.let { LatLng(it.latitude, it.longitude) }
-            if (target != null) {
-                map.cameraPosition = CameraPosition.Builder()
-                    .target(target)
-                    .zoom(MaximumAutoZoom)
-                    .build()
-            }
+        positions.size == 1 -> {
+            map.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    positions.first(),
+                    MaximumAutoZoom,
+                ),
+            )
         }
 
         else -> {
+            val bounds = LatLngBounds.Builder().also { builder ->
+                positions.forEach(builder::include)
+            }.build()
             runCatching {
-                map.getCameraForLatLngBounds(
-                    boundsBuilder.build(),
-                    intArrayOf(128, 128, 128, 128),
-                    0.0,
-                    0.0,
-                )?.let { cameraPosition ->
-                    map.cameraPosition = CameraPosition.Builder(cameraPosition)
-                        .zoom(MapSnapshotCalculator.clampAutoZoom(cameraPosition.zoom, MaximumAutoZoom))
-                        .build()
-                }
+                map.getCameraForLatLngBounds(bounds, intArrayOf(128, 180, 128, 180), 0.0, 0.0)
+            }.getOrNull()?.let { cameraPosition ->
+                map.animateCamera(
+                    CameraUpdateFactory.newCameraPosition(
+                        CameraPosition.Builder(cameraPosition)
+                            .zoom(MapSnapshotCalculator.clampAutoZoom(cameraPosition.zoom, MaximumAutoZoom))
+                            .build(),
+                    ),
+                )
             }
         }
     }
 }
 
-private fun formatRelativeDuration(start: Instant?): String {
-    if (start == null) {
-        return "just now"
-    }
-
-    val duration = Duration.between(start, Instant.now()).coerceAtLeast(Duration.ZERO)
-    val hours = duration.toHours()
-    val minutes = duration.minusHours(hours).toMinutes()
-
+private fun buildStatusPillLabel(
+    memberCount: Int,
+    staleCount: Int,
+    isRefreshing: Boolean,
+): String {
     return when {
-        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m ago"
-        hours > 0 -> "${hours}h ago"
-        minutes > 0 -> "${minutes}m ago"
-        else -> "just now"
+        isRefreshing -> "Updating family locations"
+        memberCount == 0 -> "No members visible"
+        staleCount > 0 -> "$memberCount members visible · $staleCount stale"
+        else -> "$memberCount members visible"
     }
-}
-
-private fun formatRelativeDuration(start: String): String {
-    return runCatching { formatRelativeDuration(Instant.parse(start)) }.getOrDefault("just now")
-}
-
-private fun formatStopLabel(stop: LocationStop): String {
-    return stop.label ?: formatCoordinates(stop.latitude, stop.longitude)
-}
-
-private fun formatCoordinates(latitude: Double, longitude: Double): String {
-    return "${"%.4f".format(latitude)}, ${"%.4f".format(longitude)}"
 }
 
 private fun memberMarkerImageKey(
-    displayName: String,
+    initials: String,
     isSelected: Boolean,
-    isChild: Boolean,
-) = "member-${MapSnapshotCalculator.buildInitials(displayName)}-${if (isSelected) 1 else 0}-${if (isChild) 1 else 0}"
+    presenceState: PresenceState,
+) = "member-$initials-${presenceState.name}-${if (isSelected) 1 else 0}"
 
 private fun clusterMarkerImageKey(
     count: Int,
@@ -579,68 +602,74 @@ private fun clusterMarkerImageKey(
 
 private fun createMemberMarkerBitmap(
     context: Context,
-    displayName: String,
+    initials: String,
+    presenceState: PresenceState,
     isSelected: Boolean,
-    isChild: Boolean,
-) = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
-        val canvas = Canvas(this)
-        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = when {
-                isSelected -> Color.parseColor("#1794C8")
-                isChild -> Color.parseColor("#D66B2D")
-                else -> Color.parseColor("#2F6A9A")
-            }
-        }
-        val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = context.resources.displayMetrics.density * 3f
-        }
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            textSize = context.resources.displayMetrics.density * 16f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val centerX = width / 2f
-        val centerY = height / 2f
-        val radius = width * 0.32f
-        canvas.drawCircle(centerX, centerY, radius, fillPaint)
-        canvas.drawCircle(centerX, centerY, radius, outlinePaint)
-        val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
-        canvas.drawText(MapSnapshotCalculator.buildInitials(displayName), centerX, baseline, textPaint)
+    visualColors: MapVisualColors,
+) = Bitmap.createBitmap(112, 112, Bitmap.Config.ARGB_8888).apply {
+    val canvas = Canvas(this)
+    val ringColor = when (presenceState) {
+        PresenceState.LIVE -> visualColors.live
+        PresenceState.STALE -> visualColors.stale
+        PresenceState.OFFLINE -> visualColors.offline
+        PresenceState.UNKNOWN -> visualColors.offline
     }
+    val outerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (isSelected) visualColors.accent else ringColor
+    }
+    val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = visualColors.markerFill
+    }
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = visualColors.text
+        textAlign = Paint.Align.CENTER
+        textSize = context.resources.displayMetrics.density * 16f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val centerX = width / 2f
+    val centerY = height / 2f
+    canvas.drawCircle(centerX, centerY, width * 0.30f, outerPaint)
+    canvas.drawCircle(centerX, centerY, width * 0.25f, innerPaint)
+    val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(initials, centerX, baseline, textPaint)
+}
 
 private fun createClusterMarkerBitmap(
     context: Context,
     count: Int,
     isSelected: Boolean,
-) = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
-        val canvas = Canvas(this)
-        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (isSelected) Color.parseColor("#1794C8") else Color.parseColor("#42566B")
-        }
-        val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = context.resources.displayMetrics.density * 3f
-        }
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            textSize = context.resources.displayMetrics.density * 18f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val centerX = width / 2f
-        val centerY = height / 2f
-        val radius = width * 0.32f
-        canvas.drawCircle(centerX, centerY, radius, fillPaint)
-        canvas.drawCircle(centerX, centerY, radius, outlinePaint)
-        val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
-        canvas.drawText(count.toString(), centerX, baseline, textPaint)
+    visualColors: MapVisualColors,
+) = Bitmap.createBitmap(112, 112, Bitmap.Config.ARGB_8888).apply {
+    val canvas = Canvas(this)
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (isSelected) visualColors.accent else visualColors.background
     }
+    val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = visualColors.white
+        style = Paint.Style.STROKE
+        strokeWidth = context.resources.displayMetrics.density * 2.5f
+    }
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = visualColors.text
+        textAlign = Paint.Align.CENTER
+        textSize = context.resources.displayMetrics.density * 16f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val centerX = width / 2f
+    val centerY = height / 2f
+    canvas.drawCircle(centerX, centerY, width * 0.28f, fillPaint)
+    canvas.drawCircle(centerX, centerY, width * 0.28f, outlinePaint)
+    val baseline = centerY - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(count.toString(), centerX, baseline, textPaint)
+}
 
-private data class MapMemberState(
-    val member: MemberSummary,
-    val latestLocation: LocationPoint?,
+private data class MapVisualColors(
+    val background: Int,
+    val markerFill: Int,
+    val accent: Int,
+    val live: Int,
+    val stale: Int,
+    val offline: Int,
+    val text: Int,
+    val white: Int,
 )
