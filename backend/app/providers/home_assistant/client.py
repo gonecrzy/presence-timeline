@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 import json
+from typing import Any
 from urllib import request
 
 import websockets
@@ -18,6 +19,7 @@ class HomeAssistantWebSocketProvider(LocationProvider):
         self.access_token = access_token
         self.normalizer = HomeAssistantEventNormalizer()
         self._connection = None
+        self._state_index: dict[str, dict[str, Any]] = {}
 
     async def snapshot(self) -> list[NormalizedLocationEvent]:
         return await asyncio.to_thread(self._fetch_snapshot)
@@ -52,7 +54,12 @@ class HomeAssistantWebSocketProvider(LocationProvider):
             payload = json.loads(message)
             if payload.get("type") != "event":
                 continue
-            normalized = self.normalizer.normalize(payload)
+            new_state = payload.get("event", {}).get("data", {}).get("new_state")
+            if isinstance(new_state, dict):
+                entity_id = new_state.get("entity_id")
+                if entity_id:
+                    self._state_index[entity_id] = new_state
+            normalized = self.normalizer.normalize(payload, state_index=self._state_index)
             if normalized is not None:
                 yield normalized
 
@@ -67,9 +74,14 @@ class HomeAssistantWebSocketProvider(LocationProvider):
         with request.urlopen(req, timeout=20) as response:
             states = json.load(response)
 
+        self._state_index = {
+            state["entity_id"]: state
+            for state in states
+            if isinstance(state, dict) and state.get("entity_id")
+        }
         events = []
         for state in states:
-            normalized = self.normalizer.normalize_state(state)
+            normalized = self.normalizer.normalize_state(state, state_index=self._state_index)
             if normalized is not None:
                 events.append(normalized)
         return events

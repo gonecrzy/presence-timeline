@@ -80,3 +80,40 @@ def test_normalizer_extracts_location_from_state_snapshot() -> None:
     assert event.source_entity_id == "device_tracker.pixel_10_pro"
     assert event.source_device_name == "Kristi"
     assert event.observed_at.tzinfo == timezone.utc
+
+
+def test_normalizer_enriches_tracker_state_from_related_battery_sensors() -> None:
+    state = {
+        "entity_id": "device_tracker.rileyphone",
+        "last_updated": "2026-07-08T20:59:40Z",
+        "attributes": {
+            "friendly_name": "RileyPhone",
+            "latitude": 37.4219999,
+            "longitude": -122.0840575,
+            "gps_accuracy": 12,
+        },
+    }
+    state_index = {
+        "sensor.rileyphone_battery_level": {
+            "entity_id": "sensor.rileyphone_battery_level",
+            "state": "21",
+            "attributes": {
+                "friendly_name": "RileyPhone Battery level",
+                "device_class": "battery",
+                "unit_of_measurement": "%",
+            },
+        },
+        "sensor.rileyphone_battery_state": {
+            "entity_id": "sensor.rileyphone_battery_state",
+            "state": "charging",
+            "attributes": {
+                "friendly_name": "RileyPhone Battery state",
+            },
+        },
+    }
+
+    event = HomeAssistantEventNormalizer().normalize_state(state, state_index=state_index)
+
+    assert event is not None
+    assert event.battery_level == 21
+    assert event.is_charging is True

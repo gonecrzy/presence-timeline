@@ -89,6 +89,39 @@ async def test_provider_listen_yields_normalized_state_changed_events(monkeypatc
 
 
 @pytest.mark.anyio
+async def test_provider_listen_enriches_tracker_event_from_prior_battery_sensor(monkeypatch) -> None:
+    connection = FakeConnection(
+        [
+            '{"type":"auth_required","ha_version":"2026.7.0"}',
+            '{"type":"auth_ok","ha_version":"2026.7.0"}',
+            '{"id":1,"type":"result","success":true,"result":null}',
+            '{"id":1,"type":"event","event":{"event_type":"state_changed","time_fired":"2026-07-09T00:00:04Z","data":{"new_state":{"entity_id":"sensor.sam_phone_battery_level","last_updated":"2026-07-09T00:00:04Z","state":"82","attributes":{"friendly_name":"Sam Phone Battery level","device_class":"battery","unit_of_measurement":"%"}}}}}',
+            '{"id":1,"type":"event","event":{"event_type":"state_changed","time_fired":"2026-07-09T00:00:05Z","data":{"new_state":{"entity_id":"sensor.sam_phone_battery_state","last_updated":"2026-07-09T00:00:05Z","state":"discharging","attributes":{"friendly_name":"Sam Phone Battery state"}}}}}',
+            '{"id":1,"type":"event","event":{"event_type":"state_changed","time_fired":"2026-07-09T00:00:06Z","data":{"new_state":{"entity_id":"device_tracker.sam_phone","last_updated":"2026-07-09T00:00:00Z","attributes":{"friendly_name":"Sam Phone","latitude":37.42,"longitude":-122.08,"gps_accuracy":9}}}}}',
+        ]
+    )
+
+    async def fake_connect(url: str):
+        return connection
+
+    monkeypatch.setattr("app.providers.home_assistant.client.websockets.connect", fake_connect)
+
+    provider = HomeAssistantWebSocketProvider(
+        ws_url="wss://ha.example.com/api/websocket",
+        access_token="secret",
+    )
+
+    events = []
+    async for event in provider.listen():
+        events.append(event)
+
+    assert len(events) == 1
+    assert events[0].source_entity_id == "device_tracker.sam_phone"
+    assert events[0].battery_level == 82
+    assert events[0].is_charging is False
+
+
+@pytest.mark.anyio
 async def test_provider_snapshot_fetches_current_tracker_states(monkeypatch) -> None:
     class FakeResponse:
         def __enter__(self):
@@ -115,6 +148,24 @@ async def test_provider_snapshot_fetches_current_tracker_states(monkeypatch) -> 
                         "last_updated": "2026-07-09T00:00:00Z",
                         "attributes": {"state_class": "measurement"},
                     },
+                    {
+                        "entity_id": "sensor.sam_phone_battery_level",
+                        "last_updated": "2026-07-09T00:00:00Z",
+                        "state": "82",
+                        "attributes": {
+                            "friendly_name": "Sam Phone Battery level",
+                            "device_class": "battery",
+                            "unit_of_measurement": "%",
+                        },
+                    },
+                    {
+                        "entity_id": "sensor.sam_phone_battery_state",
+                        "last_updated": "2026-07-09T00:00:00Z",
+                        "state": "discharging",
+                        "attributes": {
+                            "friendly_name": "Sam Phone Battery state",
+                        },
+                    },
                 ]
             ).encode()
 
@@ -135,4 +186,6 @@ async def test_provider_snapshot_fetches_current_tracker_states(monkeypatch) -> 
 
     assert len(events) == 1
     assert events[0].source_entity_id == "device_tracker.sam_phone"
+    assert events[0].battery_level == 82
+    assert events[0].is_charging is False
     assert events[0].observed_at.tzinfo == timezone.utc
