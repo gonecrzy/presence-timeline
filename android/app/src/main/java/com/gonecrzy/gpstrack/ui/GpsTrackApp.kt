@@ -30,6 +30,7 @@ import androidx.navigation.navArgument
 import com.gonecrzy.gpstrack.data.settings.AppPreferences
 import com.gonecrzy.gpstrack.AppContainer
 import com.gonecrzy.gpstrack.ui.navigation.AppDestination
+import com.gonecrzy.gpstrack.ui.model.currentHistoryDate
 import com.gonecrzy.gpstrack.ui.model.HistoryPeriod
 import com.gonecrzy.gpstrack.ui.screens.HistoryScreen
 import com.gonecrzy.gpstrack.ui.screens.MapScreen
@@ -195,7 +196,7 @@ fun GpsTrackApp(container: AppContainer) {
                             AppDestination.History.build(
                                 memberId = selectedMemberId,
                                 period = HistoryPeriod.DAY.name,
-                                date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
+                                date = currentHistoryDate().toString(),
                             ),
                         )
                     },

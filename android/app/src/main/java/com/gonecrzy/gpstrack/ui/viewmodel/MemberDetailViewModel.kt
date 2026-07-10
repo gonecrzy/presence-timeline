@@ -7,9 +7,9 @@ import com.gonecrzy.gpstrack.data.repository.GpsTrackRepository
 import com.gonecrzy.gpstrack.ui.model.MemberDetailUiState
 import com.gonecrzy.gpstrack.ui.model.buildDayTimelineItems
 import com.gonecrzy.gpstrack.ui.model.buildHistorySummaryLabel
+import com.gonecrzy.gpstrack.ui.model.currentHistoryDate
+import com.gonecrzy.gpstrack.ui.model.historyQueryRange
 import com.gonecrzy.gpstrack.ui.model.toFamilyMemberUiModel
-import java.time.LocalDate
-import java.time.ZoneOffset
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +22,7 @@ class MemberDetailViewModel(
     private val memberId: String,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
-        MemberDetailUiState(selectedDate = LocalDate.now(ZoneOffset.UTC)),
+        MemberDetailUiState(selectedDate = currentHistoryDate()),
     )
     val uiState = _uiState.asStateFlow()
 
@@ -81,12 +81,16 @@ class MemberDetailViewModel(
             return
         }
         val date = _uiState.value.selectedDate
-        val start = date.atStartOfDay(ZoneOffset.UTC).toInstant().toString()
-        val end = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toString()
+        val range = historyQueryRange(
+            period = com.gonecrzy.gpstrack.ui.model.HistoryPeriod.DAY,
+            selectedDate = date,
+        )
         viewModelScope.launch {
             _uiState.update { state -> state.copy(isLoading = state.member == null) }
             val latestLocation = runCatching { repository.loadLatestLocation(member.id) }.getOrNull()
-            val timelineRaw = runCatching { repository.loadTimeline(member.id, start, end) }.getOrDefault(emptyList())
+            val timelineRaw = runCatching {
+                repository.loadTimeline(member.id, range.start.toString(), range.end.toString())
+            }.getOrDefault(emptyList())
             val summary = runCatching { repository.loadDailySummary(member.id, date.toString()) }.getOrNull()
             _uiState.update {
                 it.copy(

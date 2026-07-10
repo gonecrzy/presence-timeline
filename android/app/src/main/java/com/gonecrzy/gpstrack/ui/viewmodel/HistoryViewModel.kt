@@ -13,8 +13,8 @@ import com.gonecrzy.gpstrack.ui.model.buildDayTimelineItems
 import com.gonecrzy.gpstrack.ui.model.buildHistoryMapUiModel
 import com.gonecrzy.gpstrack.ui.model.buildHistorySummaryLabel
 import com.gonecrzy.gpstrack.ui.model.buildRangeSummaryTimelineItems
+import com.gonecrzy.gpstrack.ui.model.historyQueryRange
 import java.time.LocalDate
-import java.time.ZoneOffset
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -142,23 +142,13 @@ class HistoryViewModel(
         val memberId = state.selectedMemberId ?: return
         val period = state.period
         val date = state.selectedDate
-        val zoneId = java.time.ZoneId.systemDefault()
-
-        val (start, end) = when (period) {
-            HistoryPeriod.DAY -> {
-                date.atStartOfDay(zoneId).toInstant() to date.plusDays(1).atStartOfDay(zoneId).toInstant()
-            }
-            HistoryPeriod.WEEK -> {
-                date.minusDays(6).atStartOfDay(zoneId).toInstant() to date.plusDays(1).atStartOfDay(zoneId).toInstant()
-            }
-            HistoryPeriod.MONTH -> {
-                date.minusDays(29).atStartOfDay(zoneId).toInstant() to date.plusDays(1).atStartOfDay(zoneId).toInstant()
-            }
-        }
+        val range = historyQueryRange(period = period, selectedDate = date)
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, isRefreshing = false, errorMessage = null) }
-            val timelineRaw = runCatching { repository.loadTimeline(memberId, start.toString(), end.toString()) }.getOrElse {
+            val timelineRaw = runCatching {
+                repository.loadTimeline(memberId, range.start.toString(), range.end.toString())
+            }.getOrElse {
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,
@@ -169,7 +159,9 @@ class HistoryViewModel(
                 return@launch
             }
             val historyPoints = if (period == HistoryPeriod.DAY) {
-                runCatching { repository.loadMemberHistory(memberId, start.toString(), end.toString()) }.getOrDefault(emptyList())
+                runCatching {
+                    repository.loadMemberHistory(memberId, range.start.toString(), range.end.toString())
+                }.getOrDefault(emptyList())
             } else {
                 emptyList()
             }

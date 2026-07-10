@@ -64,6 +64,7 @@ import com.gonecrzy.gpstrack.ui.components.MemberPreviewSheet
 import com.gonecrzy.gpstrack.ui.model.FamilyMemberUiModel
 import com.gonecrzy.gpstrack.ui.model.MapPlaceUiModel
 import com.gonecrzy.gpstrack.ui.model.PresenceState
+import com.gonecrzy.gpstrack.ui.model.currentHistoryDate
 import com.gonecrzy.gpstrack.ui.theme.appColors
 import com.gonecrzy.gpstrack.ui.theme.spacing
 import com.gonecrzy.gpstrack.ui.viewmodel.MapViewModel
@@ -298,7 +299,7 @@ fun MapScreen(
                 onViewToday = {
                     onViewToday(
                         selectedMember.id,
-                        java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString(),
+                        currentHistoryDate().toString(),
                     )
                 },
                 onOpenDetails = { onMemberSelected(selectedMember.id) },
