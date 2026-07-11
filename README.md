@@ -1,19 +1,20 @@
 # GpsTrack
 
-Private, self-hosted, Android-first family location tracking.
+Private, self-hosted Home Assistant location history service and dashboard backend.
 
-This repository currently contains the backend foundation:
+This branch is the Home Assistant-focused fork of the project. The Android app work is intentionally left behind on `feat/backend-foundation`.
 
-- `backend/`: FastAPI service, normalized domain models, provider seams, tests
-- `android/`: Android-first parent app scaffold targeting the backend API
-- `docs/`: architecture notes and implementation constraints
+## Repository layout
+
+- `backend/`: FastAPI service, normalized domain models, Home Assistant provider, and tests
+- `docs/`: architecture notes and branch roadmap
 - `docker-compose.yml`: local API + PostGIS runtime
 
 ## Principles
 
-- Home Assistant is the live source of truth today, but the backend owns normalized history.
-- The mobile app consumes only our API and never sees Home Assistant internals.
-- Every feature must answer one of three questions: where, when, or is safe.
+- Home Assistant is the live event source.
+- This service owns normalized history, derived trips, stop summaries, places, and safety events.
+- The next product surface should be Home Assistant native: integration hooks, dashboard data, and HA-friendly UI delivery.
 
 ## Local development
 
@@ -26,17 +27,6 @@ docker compose up --build
 
 3. The API will be available at `http://localhost:${GPSTRACK_API_PORT:-8000}`.
 
-## Android scaffold
-
-The Android app currently targets local-first development with a configurable backend base URL and open auth mode.
-
-See [android/README.md](/root/gpstrack/android/README.md) for:
-
-- SDK prerequisites
-- local backend URL setup
-- local debug build instructions
-- release APK publishing to git-hosted release targets
-
 ## Backend verification
 
 From `backend/`:
@@ -48,49 +38,35 @@ pip install -e '.[dev]'
 pytest
 ```
 
-## Current scope
+## Current branch scope
 
-This first milestone provides:
+This branch currently provides:
 
-- FastAPI app scaffold with health and member routes
+- FastAPI routes for health, members, member history/timeline/stops/trips/safety, and places
 - Alembic-backed schema migration flow
-- SQLAlchemy/PostGIS domain model
-- Provider abstraction for pluggable location sources
-- Open-by-default auth seam that can switch to OAuth/OIDC later
-- Home Assistant event normalizer boundary
-- Home Assistant snapshot + event ingestion worker with auto-discovered trackers
-- Retention cleanup worker for expiring stored history
-- Family places and geofence-derived safety events
-- Derived trips, stop summaries, and daily summaries from raw point history
-- Docker Compose runtime for API + PostGIS
-- Android parent app scaffold with member list, map, places, and settings flows
+- SQLAlchemy/PostGIS domain model for family location history
+- Home Assistant snapshot + websocket ingestion with auto-discovered trackers
+- Reverse geocoded places plus safe-zone-derived events
+- Derived trips, trip routes, stop summaries, and daily summaries
+- Docker Compose runtime for local development
 
 Not implemented yet:
 
-- Real family login flow
-- Home Assistant dashboard publishing
-- Android MVP polish and release hardening
+- Home Assistant custom integration packaging and config flow
+- Home Assistant dashboard or panel UI
+- Home Assistant-native auth, ingress, or session handling
+- Production packaging choices for long-running ingestion plus durable storage
 
-## Auth posture
-
-The API currently runs in `open` auth mode for early development. Protected app routes already flow through a central auth dependency so they can later switch to an external OIDC provider such as Authentik without changing every route surface.
-
-Planned future mode:
-
-- `GPSTRACK_AUTH_MODE=oidc`
-- issuer and client configuration via `.env`
-- backend-issued family scoping derived from verified identity claims
-
-## Home Assistant discovery
+## Home Assistant ingestion
 
 For live ingestion, enable the worker and provide a Home Assistant websocket URL plus long-lived access token. On startup the worker imports current coordinate-bearing `device_tracker.*` states from `/api/states`, then stays subscribed to websocket `state_changed` events.
 
 Optional overrides:
 
-- `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can still pre-seed known metadata such as child/parent classification.
+- `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can pre-seed member metadata such as child/parent classification.
 - Discovered devices can be hidden later through the member device ignore API instead of removing them from config.
 
-Then run the API and ingestion worker:
+Run the stack with:
 
 ```bash
 docker compose up --build
@@ -98,7 +74,7 @@ docker compose up --build
 
 ## Database lifecycle
 
-Schema changes now go through Alembic.
+Schema changes go through Alembic.
 
 Useful commands:
 
@@ -107,4 +83,9 @@ cd backend
 . .venv/bin/activate
 alembic upgrade head
 python -m app.workers.retention
+python -m app.workers.home_assistant
 ```
+
+## Next-step planning
+
+See [docs/architecture.md](/root/gpstrack/docs/architecture.md) for the current architecture and [docs/home-assistant-roadmap.md](/root/gpstrack/docs/home-assistant-roadmap.md) for the branch assessment and recommended next slices.

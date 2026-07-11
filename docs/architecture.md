@@ -2,27 +2,26 @@
 
 ## Goal
 
-Build a private, self-hosted family location platform where parents can answer:
+Build a private, self-hosted Home Assistant integration and dashboard stack that answers:
 
 - Where is someone now?
 - When were they there?
 - Is anything safety-relevant happening?
 
-## Boundaries
+## Current boundaries
 
-- Home Assistant Companion on Android produces live device location updates.
-- Home Assistant remains the live event source for the first provider.
-- `GpsTrack API` subscribes to provider events, normalizes them, stores independent history, computes trips and summaries, and exposes a stable REST API.
-- The mobile app will speak only to the `GpsTrack API`.
+- Home Assistant remains the live event source.
+- `GpsTrack API` subscribes to Home Assistant state, normalizes it, stores independent history, and derives higher-level views.
+- The current delivery surface is a standalone REST API plus workers, not yet a Home Assistant-native integration or dashboard.
 
-## Backend components
+## Current backend components
 
 ### API layer
 
 - FastAPI application
 - Versioned REST routes under `/api/v1`
-- No Home Assistant field names in public responses
-- App auth is independent from Home Assistant provider auth
+- Current routes cover health, members, member history/timeline/stops/trips/safety, and places
+- Responses already hide Home Assistant field names behind normalized schemas
 
 ### Domain layer
 
@@ -35,48 +34,53 @@ Build a private, self-hosted family location platform where parents can answer:
 - `DailySummary`
 - `SafetyEvent`
 
-These tables are provider-agnostic and represent backend-owned truth after normalization.
+These tables are still useful for the pivot because they already represent backend-owned history and derived views instead of raw Home Assistant payloads.
 
 ### Provider layer
 
-- `LocationProvider` interface defines the contract for event-producing integrations.
-- `HomeAssistantWebSocketProvider` is the first implementation.
-- Provider-specific payloads are normalized into backend domain events before persistence.
-- A separate ingestion worker consumes Home Assistant events and writes normalized history into Postgres.
+- `LocationProvider` defines the ingestion contract.
+- `HomeAssistantWebSocketProvider` snapshots `/api/states` and subscribes to websocket `state_changed` events.
+- Provider payloads are normalized into backend events before persistence.
+- The ingestion worker supports auto-discovery of Home Assistant trackers.
 
-### Authentication layer
-
-- Backend-to-Home-Assistant auth uses Home Assistant bearer tokens only for provider access.
-- Family-facing app auth remains separate from Home Assistant.
-- Current mode is intentionally `open` for local/private development.
-- Future mode will support external OAuth/OIDC providers such as Authentik through a single request-auth dependency.
-
-### Storage
+### Storage and derivation
 
 - PostgreSQL + PostGIS
-- Raw points stored with timestamps, source/provider metadata, battery, and spatial fields
-- Derived trips, daily summaries, and geofence safety events stored separately from raw history
-- Retention controlled by `GPSTRACK_RETENTION_DAYS`, default `7`
-- Schema evolution is managed through Alembic migrations, not ORM `create_all`
+- Raw points include timestamps, source/provider metadata, battery, and spatial fields
+- Derived trips, daily summaries, stop summaries, and safe-zone events are stored separately from raw history
+- Retention is controlled by `GPSTRACK_RETENTION_DAYS`
+- Schema evolution is managed through Alembic migrations
 
-### Safety and places
+### Auth posture
 
-- Family-defined circular places provide the first place model.
-- Places marked as `is_safe_zone` drive `safe_zone_entered` and `safe_zone_exited` derived events.
-- Safety derivation currently runs from stored point history rather than a complex rules engine.
+- Current API mode is intentionally `open` for local development.
+- There is an unused path toward external OIDC, but that is not the right end state for a Home Assistant-native product.
+- A Home Assistant-focused branch should expect to replace or wrap the current request auth model with Home Assistant auth, ingress, or trusted internal service boundaries.
 
-## First milestone
+## Target shape after the pivot
 
-This foundation milestone intentionally stops at:
+The likely end state is a two-layer system:
 
-- service bootstrap
-- domain model definition
-- provider seam definition
-- Home Assistant event normalization
-- local Docker runtime
+1. A durable history/derivation service that keeps the current database and ingestion responsibilities.
+2. A Home Assistant-facing integration surface that exposes entities, services, panels, cards, or API adapters inside Home Assistant.
 
-It does not yet include:
+That shape fits the current codebase better than forcing the entire service into a pure in-process Home Assistant integration.
 
-- real authentication enforcement
-- public timeline/playback endpoints
-- mobile client
+## What is missing today
+
+- No Home Assistant custom integration package under `custom_components/`
+- No config-entry flow, options flow, or Home Assistant service registration
+- No Lovelace card, dashboard bundle, or custom panel frontend
+- No Home Assistant auth/ingress handling
+- No packaging decision for database-backed deployment in a Home Assistant environment
+
+## Current milestone status
+
+The branch already has the hardest backend foundation pieces:
+
+- provider ingestion
+- normalized persistence
+- geospatial derivation
+- tested API views over the derived data
+
+The next milestone should move from "standalone API with Home Assistant as input" to "Home Assistant product surface backed by this API."

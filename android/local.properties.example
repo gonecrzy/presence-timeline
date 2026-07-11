@@ -1,3 +1,0 @@
-sdk.dir=/path/to/Android/Sdk
-gpstrack.baseUrl=http://10.0.2.2:18000/
-gpstrack.mapStyleUrl=https://tiles.openfreemap.org/styles/liberty
