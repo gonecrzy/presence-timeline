@@ -106,17 +106,6 @@ class GpsTrackPanel extends HTMLElement {
   }
 
   async _apiGet(path) {
-    if (this._hass?.callApi) {
-      try {
-        const normalized = path.startsWith("/api/") ? path.slice(5) : path.replace(/^\//, "");
-        return await this._hass.callApi("GET", normalized);
-      } catch (err) {
-        if (err?.status !== 404) {
-          throw err;
-        }
-      }
-    }
-
     const headers = { Accept: "application/json" };
     const token = this._hass?.auth?.data?.accessToken || this._hass?.auth?.accessToken;
     if (token) {
@@ -129,7 +118,14 @@ class GpsTrackPanel extends HTMLElement {
       credentials: "same-origin",
     });
     if (!response.ok) {
-      throw new Error(`GpsTrack panel request failed: ${response.status}`);
+      let detail = "";
+      try {
+        const payload = await response.json();
+        detail = payload?.message || payload?.error || JSON.stringify(payload);
+      } catch (_err) {
+        detail = await response.text();
+      }
+      throw new Error(`GpsTrack panel request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
     }
     return response.json();
   }
