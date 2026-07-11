@@ -61,6 +61,7 @@ class FakeMemberRepository:
             )
         ]
         self.family = SimpleNamespace(id=uuid4())
+        self.stays = []
 
     def list_members_for_family_slug(self, family_slug: str):
         assert family_slug == "family-alpha"
@@ -139,6 +140,10 @@ class FakeMemberRepository:
     def list_trips_for_member_range(self, member_id, start, end):
         assert member_id == self.member.id
         return self.trips
+
+    def list_stays_for_member_range(self, member_id, start, end):
+        assert member_id == self.member.id
+        return self.stays
 
 
 class FakeTripDerivation:
@@ -246,6 +251,39 @@ def test_member_view_service_lists_members_with_place_aware_current_location_lab
             accuracy_m=12.0,
             battery_level=88,
             source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+
+    members = service.list_members("family-alpha")
+
+    assert members[0]["current_location_label"] == "School"
+
+
+def test_member_view_service_uses_persisted_stay_for_current_location_label(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0841,
+            accuracy_m=12.0,
+            battery_level=88,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    repository.stays = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            started_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            ended_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0841,
+            point_count=3,
+            accuracy_m=10.0,
         ),
     ]
     monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
@@ -417,6 +455,48 @@ def test_member_view_service_condenses_nearby_points_into_location_stay(monkeypa
     assert items[0]["ended_at"] == datetime(2026, 7, 8, 20, 12, tzinfo=UTC)
     assert items[0]["duration_seconds"] == 12 * 60
     assert items[0]["is_current"] is True
+    assert items[0]["point_count"] == 3
+
+
+def test_member_view_service_timeline_uses_persisted_stays(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0841,
+            accuracy_m=12.0,
+            battery_level=88,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    repository.stays = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            started_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            ended_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4210,
+            longitude=-122.0841,
+            point_count=3,
+            accuracy_m=10.0,
+        ),
+    ]
+    repository.trips = []
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+    service.trip_derivation = FakeTripDerivation()
+    service.safety_derivation = SimpleNamespace(derive=lambda **_: [])
+
+    items = service.timeline(
+        repository.member.id,
+        datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+        datetime(2026, 7, 8, 22, 0, tzinfo=UTC),
+    )
+
+    assert [item["kind"] for item in items] == ["location_stay"]
+    assert items[0]["label"] == "School"
     assert items[0]["point_count"] == 3
 
 

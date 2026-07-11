@@ -115,6 +115,19 @@ class MemberViewService:
 
         points = self.repository.list_member_history(member_id, start, end)
         places = _serialize_places(self.repository.list_places_for_family_id(member.family_id))
+        persisted_stops = self._persisted_stop_items(
+            member_id,
+            start,
+            end,
+            places=places,
+            latest_observed_at=points[-1].observed_at if points else None,
+            resolve_addresses=resolve_addresses,
+            dwell_radius_m=dwell_radius_m,
+            minimum_duration=minimum_duration,
+        )
+        if persisted_stops is not None:
+            return persisted_stops
+
         return _build_stop_items(
             points=points,
             places=places,
@@ -170,15 +183,26 @@ class MemberViewService:
         self.repository.commit()
 
         items = []
-        stop_items = _build_stop_items(
-            points=points,
+        stop_items = self._persisted_stop_items(
+            member_id,
+            start,
+            end,
             places=places,
-            place_matcher=self.place_matcher,
-            reverse_geocode_cache=self.reverse_geocode_cache,
+            latest_observed_at=points[-1].observed_at if points else None,
+            resolve_addresses=resolve_addresses,
             dwell_radius_m=250.0,
             minimum_duration=timedelta(minutes=10),
-            resolve_addresses=resolve_addresses,
         )
+        if stop_items is None:
+            stop_items = _build_stop_items(
+                points=points,
+                places=places,
+                place_matcher=self.place_matcher,
+                reverse_geocode_cache=self.reverse_geocode_cache,
+                dwell_radius_m=250.0,
+                minimum_duration=timedelta(minutes=10),
+                resolve_addresses=resolve_addresses,
+            )
         for stop in stop_items:
             items.append(
                 {
@@ -238,15 +262,26 @@ class MemberViewService:
             latest_point.observed_at,
         )
         places = _serialize_places(self.repository.list_places_for_family_id(self.repository.get_member(member.id).family_id))
-        stop_items = _build_stop_items(
-            points=history,
+        stop_items = self._persisted_stop_items(
+            member.id,
+            latest_point.observed_at - timedelta(days=1),
+            latest_point.observed_at,
             places=places,
-            place_matcher=self.place_matcher,
-            reverse_geocode_cache=self.reverse_geocode_cache,
+            latest_observed_at=latest_point.observed_at,
+            resolve_addresses=resolve_addresses,
             dwell_radius_m=250.0,
             minimum_duration=timedelta(minutes=10),
-            resolve_addresses=resolve_addresses,
         )
+        if stop_items is None:
+            stop_items = _build_stop_items(
+                points=history,
+                places=places,
+                place_matcher=self.place_matcher,
+                reverse_geocode_cache=self.reverse_geocode_cache,
+                dwell_radius_m=250.0,
+                minimum_duration=timedelta(minutes=10),
+                resolve_addresses=resolve_addresses,
+            )
         current_stop = next((stop for stop in reversed(stop_items) if stop["is_current"]), None)
         if current_stop is not None:
             return current_stop["label"]
@@ -265,6 +300,36 @@ class MemberViewService:
             latest_point.longitude,
             granularity=granularity,
         ) or _coordinate_label(latest_point.latitude, latest_point.longitude)
+
+    def _persisted_stop_items(
+        self,
+        member_id: UUID,
+        start: datetime,
+        end: datetime,
+        *,
+        places: list[dict],
+        latest_observed_at: datetime | None,
+        resolve_addresses: bool,
+        dwell_radius_m: float,
+        minimum_duration: timedelta,
+    ) -> list[dict] | None:
+        if dwell_radius_m != 250.0 or minimum_duration != timedelta(minutes=10):
+            return None
+        if not hasattr(self.repository, "list_stays_for_member_range"):
+            return None
+
+        stays = self.repository.list_stays_for_member_range(member_id, start, end)
+        if not stays:
+            return None
+
+        return _decorate_stay_items(
+            stays=stays,
+            latest_observed_at=latest_observed_at,
+            places=places,
+            place_matcher=self.place_matcher,
+            reverse_geocode_cache=self.reverse_geocode_cache,
+            resolve_addresses=resolve_addresses,
+        )
 
 
 def _serialize_point(point) -> dict:
@@ -388,6 +453,64 @@ def _build_stop_items(
                 "address": address,
                 "label": label,
                 "is_current": index == len(derived_stops) - 1 and stop.ended_at == latest_observed_at,
+            }
+        )
+
+    return items
+
+
+def _decorate_stay_items(
+    *,
+    stays,
+    latest_observed_at: datetime | None,
+    places: list[dict],
+    place_matcher: PlaceMatcher,
+    reverse_geocode_cache: ReverseGeocodeCacheService,
+    resolve_addresses: bool,
+) -> list[dict]:
+    items = []
+    for index, stay in enumerate(stays):
+        duration_seconds = int((stay.ended_at - stay.started_at).total_seconds())
+        matched_place = place_matcher.match(places, stay.latitude, stay.longitude)
+        place_name = matched_place["name"] if matched_place is not None else None
+        granularity = choose_address_granularity(
+            accuracy_m=stay.accuracy_m,
+            duration_seconds=duration_seconds,
+            point_count=stay.point_count,
+            moving=False,
+        )
+        payload = None
+        address = None
+        derived_place_name = None
+        if place_name is None and resolve_addresses:
+            payload = reverse_geocode_cache.lookup_payload(stay.latitude, stay.longitude)
+            if payload is None:
+                reverse_geocode_cache.queue_lookup(stay.latitude, stay.longitude)
+            if payload is not None:
+                derived_place_name = format_reverse_geocode_place_name(payload)
+                address = format_reverse_geocode_label(payload, granularity=granularity) or payload.get("display_name")
+            if address is None:
+                address = reverse_geocode_cache.lookup_label(
+                    stay.latitude,
+                    stay.longitude,
+                    granularity=granularity,
+                )
+
+        place_name = place_name or derived_place_name
+        label = place_name or address or _coordinate_label(stay.latitude, stay.longitude)
+        items.append(
+            {
+                "started_at": stay.started_at,
+                "ended_at": stay.ended_at,
+                "duration_seconds": duration_seconds,
+                "latitude": stay.latitude,
+                "longitude": stay.longitude,
+                "point_count": stay.point_count,
+                "place_id": matched_place["id"] if matched_place is not None else None,
+                "place_name": place_name,
+                "address": address,
+                "label": label,
+                "is_current": index == len(stays) - 1 and stay.ended_at == latest_observed_at,
             }
         )
 

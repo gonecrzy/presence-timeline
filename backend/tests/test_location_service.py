@@ -11,6 +11,7 @@ class FakeLocationRepository:
         self.members = {}
         self.devices = {}
         self.points = []
+        self.stays = []
         self.reverse_geocode_cache = {}
 
     def resolve_member_by_source_entity(self, source_entity_id: str):
@@ -67,6 +68,17 @@ class FakeLocationRepository:
             if point.member_id == member_id and start <= point.observed_at <= end
         ]
 
+    def list_points_for_member_on_date(self, member_id, start, end):
+        return [
+            point
+            for point in self.points
+            if point.member_id == member_id and start <= point.observed_at < end
+        ]
+
+    def replace_member_day_stays(self, member_id, target_date, stays):
+        self.stays = list(stays)
+        return self.stays
+
     def get_latest_point_for_member(self, member_id):
         matching = [point for point in self.points if point.member_id == member_id]
         if not matching:
@@ -87,6 +99,9 @@ class FakeLocationRepository:
             "longitude_rounded": longitude_rounded,
         }
         return self.reverse_geocode_cache[key], created
+
+    def commit(self):
+        return None
 
 
 class FakeReverseGeocodeCache:
@@ -330,3 +345,36 @@ def test_ingest_keeps_periodic_stationary_sample_after_dedupe_window() -> None:
 
     assert stored is not None
     assert len(repository.points) == 2
+
+
+def test_ingest_rebuilds_member_day_stays_after_persisting_point(monkeypatch) -> None:
+    repository = FakeLocationRepository()
+    member_id = uuid4()
+    repository.members["device_tracker.sam_phone"] = {"id": member_id, "display_name": "Sam"}
+    calls = []
+
+    class FakeStayDerivationService:
+        def __init__(self, repository_arg) -> None:
+            assert repository_arg is repository
+
+        def rebuild_member_day(self, member_id_arg, target_date) -> None:
+            calls.append((member_id_arg, target_date))
+
+    monkeypatch.setattr("app.services.locations.StayDerivationService", FakeStayDerivationService)
+
+    service = LocationService(repository)
+    observed_at = datetime(2026, 7, 8, 21, 0, tzinfo=UTC)
+    stored = service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=observed_at,
+            latitude=37.4200,
+            longitude=-122.0800,
+            accuracy_m=10.0,
+        ),
+        received_at=observed_at,
+    )
+
+    assert stored is not None
+    assert calls == [(member_id, observed_at.date())]

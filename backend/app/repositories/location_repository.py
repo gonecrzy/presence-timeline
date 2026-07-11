@@ -5,7 +5,7 @@ from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.family import Device, Family, Member
-from app.models.location import DailySummary, LocationPoint, ProviderStatus, ReverseGeocodeCache, SafetyEvent
+from app.models.location import DailySummary, LocationPoint, LocationStay, ProviderStatus, ReverseGeocodeCache, SafetyEvent
 from app.models.place import Place
 from app.models.trip import Trip
 
@@ -311,6 +311,12 @@ class LocationRepository:
         )
         return int(result.rowcount or 0)
 
+    def delete_location_stays_older_than(self, cutoff: datetime) -> int:
+        result = self.db.execute(
+            delete(LocationStay).where(LocationStay.ended_at < cutoff),
+        )
+        return int(result.rowcount or 0)
+
     def delete_safety_events_older_than(self, cutoff: datetime) -> int:
         result = self.db.execute(
             delete(SafetyEvent).where(SafetyEvent.observed_at < cutoff),
@@ -378,6 +384,37 @@ class LocationRepository:
         self.db.flush()
         self.db.refresh(point)
         return point
+
+    def replace_member_day_stays(
+        self,
+        member_id: UUID,
+        target_date: date,
+        stays: list[dict],
+    ) -> list[LocationStay]:
+        day_start = datetime.combine(target_date, time.min, tzinfo=UTC)
+        day_end = day_start + timedelta(days=1)
+        self.db.execute(
+            delete(LocationStay)
+            .where(LocationStay.member_id == member_id)
+            .where(LocationStay.started_at >= day_start)
+            .where(LocationStay.started_at < day_end),
+        )
+
+        rows = [
+            LocationStay(
+                member_id=member_id,
+                started_at=stay["started_at"],
+                ended_at=stay["ended_at"],
+                latitude=stay["latitude"],
+                longitude=stay["longitude"],
+                point_count=stay["point_count"],
+                accuracy_m=stay.get("accuracy_m"),
+            )
+            for stay in stays
+        ]
+        self.db.add_all(rows)
+        self.db.flush()
+        return rows
 
     def list_recent_location_points(self, limit: int) -> list[LocationPoint]:
         stmt: Select[tuple[LocationPoint]] = (
@@ -496,6 +533,21 @@ class LocationRepository:
             .where(LocationPoint.observed_at >= start)
             .where(LocationPoint.observed_at < end)
             .order_by(LocationPoint.observed_at.asc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def list_stays_for_member_range(
+        self,
+        member_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[LocationStay]:
+        stmt: Select[tuple[LocationStay]] = (
+            select(LocationStay)
+            .where(LocationStay.member_id == member_id)
+            .where(LocationStay.started_at < end)
+            .where(LocationStay.ended_at >= start)
+            .order_by(LocationStay.started_at.asc())
         )
         return list(self.db.scalars(stmt))
 

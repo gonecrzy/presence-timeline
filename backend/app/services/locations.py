@@ -7,6 +7,7 @@ from app.models.location import LocationPoint
 from app.repositories.location_repository import LocationRepository
 from app.services.places import haversine_m
 from app.services.reverse_geocode_cache import ReverseGeocodeCacheService
+from app.services.stay_derivation import StayDerivationService
 
 
 class LocationService:
@@ -16,6 +17,7 @@ class LocationService:
         auto_discovery_family_slug: str | None = None,
         auto_discovery_family_name: str | None = None,
         reverse_geocode_cache: ReverseGeocodeCacheService | None = None,
+        stay_derivation: StayDerivationService | None = None,
         dedupe_window_seconds: int | None = None,
         dedupe_min_distance_m: float | None = None,
         dedupe_max_distance_m: float | None = None,
@@ -25,6 +27,7 @@ class LocationService:
         self.auto_discovery_family_slug = auto_discovery_family_slug
         self.auto_discovery_family_name = auto_discovery_family_name
         self.reverse_geocode_cache = reverse_geocode_cache or ReverseGeocodeCacheService(repository)
+        self.stay_derivation = stay_derivation or StayDerivationService(repository)
         self.dedupe_window_seconds = (
             settings.location_dedupe_window_seconds if dedupe_window_seconds is None else dedupe_window_seconds
         )
@@ -88,6 +91,10 @@ class LocationService:
             is_charging=event.is_charging,
         )
         stored = self.repository.add_location_point(point)
+        self.stay_derivation.rebuild_member_day(
+            member["id"] if isinstance(member, dict) else member.id,
+            event.observed_at.date(),
+        )
         if self.reverse_geocode_cache is not None:
             self.reverse_geocode_cache.queue_lookup(event.latitude, event.longitude)
         if hasattr(self.repository, "commit"):

@@ -36,6 +36,7 @@ class Member(TimestampMixin, Base):
     family: Mapped[Family] = relationship(back_populates="members")
     devices: Mapped[list["Device"]] = relationship(back_populates="member")
     location_points: Mapped[list["LocationPoint"]] = relationship(back_populates="member")
+    location_stays: Mapped[list["LocationStay"]] = relationship(back_populates="member")
     trips: Mapped[list["Trip"]] = relationship(back_populates="member")
 
 
@@ -58,6 +59,6 @@ class Device(TimestampMixin, Base):
     location_points: Mapped[list["LocationPoint"]] = relationship(back_populates="device")
 
 
-from app.models.location import LocationPoint  # noqa: E402
+from app.models.location import LocationPoint, LocationStay  # noqa: E402
 from app.models.place import Place  # noqa: E402
 from app.models.trip import Trip  # noqa: E402

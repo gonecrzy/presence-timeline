@@ -15,6 +15,7 @@ class RetentionService:
 
         counts = {
             "location_points": self.repository.delete_location_points_older_than(cutoff),
+            "location_stays": self.repository.delete_location_stays_older_than(cutoff),
             "safety_events": self.repository.delete_safety_events_older_than(cutoff),
             "daily_summaries": self.repository.delete_daily_summaries_older_than(cutoff),
             "trips": self.repository.delete_trips_older_than(cutoff),

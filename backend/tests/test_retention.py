@@ -16,6 +16,10 @@ class FakeRetentionRepository:
         self.cutoffs["safety_events"] = cutoff
         return 1
 
+    def delete_location_stays_older_than(self, cutoff: datetime) -> int:
+        self.cutoffs["location_stays"] = cutoff
+        return 5
+
     def delete_daily_summaries_older_than(self, cutoff: datetime) -> int:
         self.cutoffs["daily_summaries"] = cutoff
         return 2
@@ -38,11 +42,13 @@ def test_retention_prunes_all_retained_data_classes() -> None:
     expected_cutoff = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
     assert results == {
         "location_points": 3,
+        "location_stays": 5,
         "safety_events": 1,
         "daily_summaries": 2,
         "trips": 4,
     }
     assert repository.cutoffs["location_points"] == expected_cutoff
+    assert repository.cutoffs["location_stays"] == expected_cutoff
     assert repository.cutoffs["safety_events"] == expected_cutoff
     assert repository.cutoffs["daily_summaries"] == expected_cutoff
     assert repository.cutoffs["trips"] == expected_cutoff

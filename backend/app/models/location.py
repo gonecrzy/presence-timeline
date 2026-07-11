@@ -40,6 +40,25 @@ class LocationPoint(Base):
     device: Mapped["Device | None"] = relationship(back_populates="location_points")
 
 
+class LocationStay(TimestampMixin, Base):
+    __tablename__ = "location_stays"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    member_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    point_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    accuracy_m: Mapped[float | None] = mapped_column(Float)
+
+    member: Mapped["Member"] = relationship(back_populates="location_stays")
+
+
 class DailySummary(TimestampMixin, Base):
     __tablename__ = "daily_summaries"
 
