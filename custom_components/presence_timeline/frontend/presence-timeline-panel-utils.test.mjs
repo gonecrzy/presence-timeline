@@ -5,6 +5,7 @@ import {
   buildHistoryWindow,
   buildPanelMapModel,
   buildRefreshStatus,
+  formatDistanceImperial,
   formatMemberBadgeStatus,
   formatStopWaypointLabel,
   normalizeHistoryHours,
@@ -63,6 +64,11 @@ test("formatStopWaypointLabel uses alphabetic markers", () => {
 test("formatMemberBadgeStatus compacts stopped state wording", () => {
   assert.equal(formatMemberBadgeStatus({ status: "stopped", status_detail: "Home" }), "At Home");
   assert.equal(formatMemberBadgeStatus({ status: "moving", current_location_label: "Main Street" }), "Near Main Street");
+});
+
+test("formatDistanceImperial uses feet for short trips and miles for longer ones", () => {
+  assert.equal(formatDistanceImperial(18), "59 ft");
+  assert.equal(formatDistanceImperial(4143), "2.6 mi");
 });
 
 test("buildPanelMapModel omits history layers in current-only mode", () => {

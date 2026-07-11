@@ -9,6 +9,7 @@ STATUS_STOPPED = "stopped"
 STATUS_UNKNOWN = "unknown"
 
 STATUS_WINDOW = timedelta(days=1)
+STATUS_WINDOW_EPSILON = timedelta(microseconds=1)
 
 
 class HomeAssistantViewService:
@@ -110,7 +111,7 @@ class HomeAssistantViewService:
         stops = self.member_views.stops(
             member_id,
             latest_point["observed_at"] - STATUS_WINDOW,
-            latest_point["observed_at"],
+            latest_point["observed_at"] + STATUS_WINDOW_EPSILON,
             resolve_addresses=True,
         )
         return next((stop for stop in reversed(stops) if stop.get("is_current")), None)

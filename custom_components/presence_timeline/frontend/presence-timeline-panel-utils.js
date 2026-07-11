@@ -111,6 +111,18 @@ export function formatMemberBadgeStatus(member) {
   return "No recent location";
 }
 
+export function formatDistanceImperial(distanceMeters) {
+  if (typeof distanceMeters !== "number" || !Number.isFinite(distanceMeters) || distanceMeters < 0) {
+    return "Distance unknown";
+  }
+  const feet = distanceMeters * 3.28084;
+  if (feet < 528) {
+    return `${Math.round(feet)} ft`;
+  }
+  const miles = feet / 5280;
+  return `${miles.toFixed(miles < 10 ? 1 : 0)} mi`;
+}
+
 export function buildPanelMapModel(summary, selectedMemberId, memberPanel, options = {}) {
   const markers = [];
   const stops = [];

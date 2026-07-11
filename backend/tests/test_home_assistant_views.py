@@ -84,6 +84,17 @@ class FakeHomeAssistantRepository:
             last_error_message=None,
             retry_delay_seconds=None,
         )
+        self.stays = [
+            SimpleNamespace(
+                member_id=self.member.id,
+                started_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+                ended_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+                latitude=37.4301,
+                longitude=-122.0901,
+                point_count=3,
+                accuracy_m=18.0,
+            )
+        ]
 
     def list_members_for_family_slug(self, family_slug: str):
         assert family_slug == "family-alpha"
@@ -107,9 +118,17 @@ class FakeHomeAssistantRepository:
 
     def list_member_history(self, member_id, start, end):
         if member_id == self.member.id:
-            return self.points
+            return [point for point in self.points if start <= point.observed_at < end]
         assert member_id == self.mirrored_member.id
-        return self.mirrored_points
+        return [point for point in self.mirrored_points if start <= point.observed_at < end]
+
+    def list_stays_for_member_range(self, member_id, start, end):
+        assert member_id == self.member.id
+        return [
+            stay
+            for stay in self.stays
+            if stay.started_at < end and stay.ended_at >= start
+        ]
 
     def get_reverse_geocode_cache(self, latitude_rounded: float, longitude_rounded: float):
         return None
@@ -228,6 +247,37 @@ def test_home_assistant_summary_hides_presence_timeline_mirror_members(monkeypat
     items = service.summary("family-alpha")
 
     assert [item["display_name"] for item in items] == ["Sam"]
+
+
+def test_home_assistant_summary_marks_member_stopped_when_persisted_stay_ends_at_latest_point(monkeypatch) -> None:
+    repository = FakeHomeAssistantRepository()
+    repository.stays = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            started_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            ended_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4301,
+            longitude=-122.0901,
+            point_count=3,
+            accuracy_m=18.0,
+        )
+    ]
+    monkeypatch.setattr(
+        "app.services.member_views.LocationRepository",
+        lambda db: repository,
+    )
+
+    service = HomeAssistantViewService(db=None)
+    service.member_views.reverse_geocode_cache = FakeReverseGeocodeCache(
+        labels={
+            (37.4301, -122.0901, "block"): "100 block of Sundance Court, Sangaree",
+        }
+    )
+
+    items = service.summary("family-alpha")
+
+    assert items[0]["status"] == "stopped"
+    assert items[0]["status_detail"] == "100 block of Sundance Court, Sangaree"
 
 
 def test_home_assistant_ingestion_status_returns_provider_diagnostics(monkeypatch) -> None:

@@ -13,6 +13,8 @@ from app.services.safety import SafetyDerivationService
 from app.services.stops import derive_stops
 from app.services.trip_derivation import TripDerivationService
 
+CURRENT_STOP_EPSILON = timedelta(microseconds=1)
+
 
 class MemberViewService:
     def __init__(self, db) -> None:
@@ -259,7 +261,7 @@ class MemberViewService:
         history = self.repository.list_member_history(
             member.id,
             latest_point.observed_at - timedelta(days=1),
-            latest_point.observed_at,
+            latest_point.observed_at + CURRENT_STOP_EPSILON,
         )
         places = _serialize_places(self.repository.list_places_for_family_id(self.repository.get_member(member.id).family_id))
         stop_items = self._persisted_stop_items(

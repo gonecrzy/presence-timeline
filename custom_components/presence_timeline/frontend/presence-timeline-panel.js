@@ -6,6 +6,7 @@ import {
   buildHistoryWindow,
   buildPanelMapModel,
   buildRefreshStatus,
+  formatDistanceImperial,
   formatMemberBadgeStatus,
   getHistoryWindowOptions,
   normalizeHistoryHours,
@@ -688,7 +689,7 @@ class PresenceTimelinePanel extends HTMLElement {
   }
 
   _tripTemplate(trip) {
-    const distance = typeof trip.distance_m === "number" ? `${Math.round(trip.distance_m)} m` : "Distance unknown";
+    const distance = formatDistanceImperial(trip.distance_m);
     const from = trip.start_label || "Unknown start";
     const to = trip.end_label || "Unknown end";
     return `
