@@ -2,6 +2,14 @@ import {
   buildHistorySegments,
   createMapRenderSignature,
 } from "./presence-timeline-map-utils.js";
+import {
+  buildHistoryWindow,
+  buildPanelMapModel,
+  buildRefreshStatus,
+  formatMemberBadgeStatus,
+  getHistoryWindowOptions,
+  normalizeHistoryHours,
+} from "./presence-timeline-panel-utils.js";
 
 const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
 const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
@@ -9,7 +17,7 @@ const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = "0.3.5";
+const ASSET_VERSION = "0.3.7";
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -20,11 +28,14 @@ class PresenceTimelinePanel extends HTMLElement {
     this._summary = [];
     this._selectedMemberId = null;
     this._memberPanel = null;
+    this._integrationStatus = null;
     this._loading = false;
     this._error = null;
     this._renderedMapSignature = null;
     this._selectedStopIndex = null;
     this._pendingMapCommand = null;
+    this._selectedHistoryHours = DEFAULT_HISTORY_HOURS;
+    this._showHistoryRoutes = true;
   }
 
   set hass(hass) {
@@ -38,6 +49,10 @@ class PresenceTimelinePanel extends HTMLElement {
 
   set panel(panel) {
     this._panel = panel;
+    this._selectedHistoryHours = normalizeHistoryHours(
+      this._selectedHistoryHours || this._panel?.config?.defaultHistoryHours,
+      normalizeHistoryHours(this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS),
+    );
     this._ensureLoaded();
   }
 
@@ -64,8 +79,12 @@ class PresenceTimelinePanel extends HTMLElement {
     try {
       const payload = await this._apiGet(this._summaryApiPath());
       this._summary = payload.items || [];
+      this._integrationStatus = payload.integration_status || null;
       if (!this._selectedMemberId || !this._summary.some((member) => member.member_id === this._selectedMemberId)) {
         this._selectedMemberId = this._summary[0]?.member_id ?? null;
+      }
+      if (!this._selectedMemberId) {
+        this._memberPanel = null;
       }
       if (loadSelectedMember && this._selectedMemberId) {
         await this._loadMemberPanel(this._selectedMemberId);
@@ -105,10 +124,7 @@ class PresenceTimelinePanel extends HTMLElement {
   }
 
   _historyWindow() {
-    const end = new Date();
-    const hours = this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS;
-    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
-    return { startIso: start.toISOString(), endIso: end.toISOString() };
+    return buildHistoryWindow(this._selectedHistoryHours || this._panel?.config?.defaultHistoryHours || DEFAULT_HISTORY_HOURS);
   }
 
   _summaryApiPath() {
@@ -147,11 +163,39 @@ class PresenceTimelinePanel extends HTMLElement {
     return response.json();
   }
 
+  async _handleHistoryWindowChange(value) {
+    const nextHours = normalizeHistoryHours(value, this._selectedHistoryHours || DEFAULT_HISTORY_HOURS);
+    if (nextHours === this._selectedHistoryHours) {
+      return;
+    }
+    this._selectedHistoryHours = nextHours;
+    if (this._selectedMemberId) {
+      await this._loadMemberPanel(this._selectedMemberId);
+      return;
+    }
+    this._render();
+  }
+
+  _toggleHistoryRoutes() {
+    this._showHistoryRoutes = !this._showHistoryRoutes;
+    this._selectedStopIndex = null;
+    this._pendingMapCommand = null;
+    this._render();
+  }
+
+  _refreshStatus() {
+    return buildRefreshStatus(this._integrationStatus, new Date());
+  }
+
   _render() {
     const selectedMember = this._summary.find((member) => member.member_id === this._selectedMemberId) ?? null;
     const mapModel = this._buildMapModel(selectedMember, this._memberPanel);
-    const historyStops = this._memberPanel?.stops ?? [];
-    const historyTrips = (this._memberPanel?.timeline ?? []).filter((item) => item.kind === "trip");
+    const refreshStatus = this._refreshStatus();
+    const historyWindowOptions = getHistoryWindowOptions();
+    const historyStops = this._showHistoryRoutes ? mapModel.stops : [];
+    const historyTrips = this._showHistoryRoutes
+      ? (this._memberPanel?.timeline ?? []).filter((item) => item.kind === "trip")
+      : [];
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -192,17 +236,69 @@ class PresenceTimelinePanel extends HTMLElement {
           color: var(--secondary-text-color);
           font-size: 14px;
         }
-        .toolbar button, .badge {
+        .toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 10px;
+        }
+        .toolbar button,
+        .toolbar select,
+        .badge {
           border: none;
           border-radius: 999px;
           background: var(--card-background-color);
           color: var(--primary-text-color);
         }
         .toolbar button {
-          padding: 10px 16px;
+          padding: 10px 14px;
           font: inherit;
           cursor: pointer;
           box-shadow: var(--ha-card-box-shadow, none);
+        }
+        .toolbar select {
+          padding: 10px 14px;
+          font: inherit;
+          cursor: pointer;
+          box-shadow: var(--ha-card-box-shadow, none);
+          border: 1px solid var(--divider-color);
+        }
+        .refresh-button {
+          display: inline-flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          min-width: 126px;
+        }
+        .refresh-button-line {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+        }
+        .refresh-button-meta {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .status-indicator {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          flex: 0 0 auto;
+          box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+        }
+        .status-indicator[data-tone="good"] {
+          background: #22c55e;
+        }
+        .status-indicator[data-tone="stale"] {
+          background: #f59e0b;
+        }
+        .status-indicator[data-tone="error"] {
+          background: #ef4444;
+        }
+        .toggle-button[aria-pressed="true"] {
+          background: color-mix(in srgb, var(--card-background-color) 78%, var(--primary-color));
         }
         .status-row {
           display: flex;
@@ -225,13 +321,25 @@ class PresenceTimelinePanel extends HTMLElement {
         .badge-top {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           gap: 12px;
-          margin-bottom: 8px;
         }
         .badge-name {
           font-size: 16px;
           font-weight: 700;
+        }
+        .badge-copy {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-width: 0;
+        }
+        .badge-side {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 8px;
+          flex: 0 0 auto;
         }
         .badge-state {
           font-size: 12px;
@@ -242,6 +350,41 @@ class PresenceTimelinePanel extends HTMLElement {
         .badge-detail {
           font-size: 14px;
           color: var(--secondary-text-color);
+        }
+        .battery-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 5px 8px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.22);
+          color: var(--primary-text-color);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .battery-icon {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          width: 20px;
+          height: 10px;
+          border: 1.5px solid currentColor;
+          border-radius: 3px;
+        }
+        .battery-icon::after {
+          content: "";
+          position: absolute;
+          right: -4px;
+          width: 2px;
+          height: 5px;
+          border-radius: 0 2px 2px 0;
+          background: currentColor;
+        }
+        .battery-fill {
+          height: 6px;
+          margin-left: 1px;
+          border-radius: 2px;
+          background: currentColor;
         }
         .content {
           display: grid;
@@ -394,7 +537,26 @@ class PresenceTimelinePanel extends HTMLElement {
             <div class="subtitle">Location history and family presence timelines for Home Assistant.</div>
           </div>
           <div class="toolbar">
-            <button id="refresh-button" type="button">${this._loading ? "Refreshing..." : "Refresh"}</button>
+            <select id="history-window-select" aria-label="History window">
+              ${historyWindowOptions.map((option) => `
+                <option value="${option.hours}" ${option.hours === this._selectedHistoryHours ? "selected" : ""}>${option.label}</option>
+              `).join("")}
+            </select>
+            <button id="toggle-history-button" class="toggle-button" type="button" aria-pressed="${this._showHistoryRoutes}">
+              ${this._showHistoryRoutes ? "History on" : "Current only"}
+            </button>
+            <button
+              id="refresh-button"
+              class="refresh-button"
+              type="button"
+              title="${this._escape(`${refreshStatus.label} · ${refreshStatus.detail}`)}"
+            >
+              <span class="refresh-button-line">
+                <span class="status-indicator" data-tone="${this._escape(refreshStatus.tone)}"></span>
+                <span>${this._loading ? "Refreshing..." : "Refresh"}</span>
+              </span>
+              <span class="refresh-button-meta">${this._escape(refreshStatus.label)}</span>
+            </button>
           </div>
         </div>
         ${this._error ? `<div class="error">${this._escape(this._error)}</div>` : ""}
@@ -406,7 +568,7 @@ class PresenceTimelinePanel extends HTMLElement {
             <div class="map-header">
               <div>
                 <div class="stat-label">Map</div>
-                <div class="stat-value">Current Positions${selectedMember ? ` + ${this._escape(selectedMember.display_name)} history` : ""}</div>
+                <div class="stat-value">Current Positions${this._showHistoryRoutes && selectedMember ? ` + ${this._escape(selectedMember.display_name)} history` : ""}</div>
               </div>
               <div class="subtitle">${mapModel.markerCount} member${mapModel.markerCount === 1 ? "" : "s"}</div>
             </div>
@@ -422,35 +584,37 @@ class PresenceTimelinePanel extends HTMLElement {
                 <div class="subtitle">${this._statusText(selectedMember)}</div>
               </div>
               <div class="stats">
-                <div class="stat">
-                  <div class="stat-label">Battery</div>
-                  <div class="stat-value">${selectedMember.battery_level ?? "Unknown"}</div>
+                  <div class="stat">
+                    <div class="stat-label">Battery</div>
+                    <div class="stat-value">${this._formatBatteryText(selectedMember.battery_level)}</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">Place</div>
+                    <div class="stat-value">${this._escape(selectedMember.status_detail ?? selectedMember.current_location_label ?? "In transit")}</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">Last Seen</div>
+                    <div class="stat-value">${this._escape(this._formatDateTime(selectedMember.observed_at || selectedMember.last_seen_at))}</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">History Window</div>
+                    <div class="stat-value">${this._selectedHistoryHours >= 72 ? `${this._selectedHistoryHours / 24}d` : `${this._selectedHistoryHours}h`}</div>
+                  </div>
                 </div>
-                <div class="stat">
-                  <div class="stat-label">Place</div>
-                  <div class="stat-value">${this._escape(selectedMember.current_location_label ?? "In transit")}</div>
+              ${this._showHistoryRoutes ? `
+                <div class="section">
+                  <h2>Stops</h2>
+                  <div class="list">
+                    ${historyStops.length ? historyStops.slice(0, 6).map((stop, index) => this._stopTemplate(stop, index)).join("") : '<div class="empty">No qualifying stops in the selected window.</div>'}
+                  </div>
                 </div>
-                <div class="stat">
-                  <div class="stat-label">Last Seen</div>
-                  <div class="stat-value">${this._escape(this._formatDateTime(selectedMember.observed_at || selectedMember.last_seen_at))}</div>
+                <div class="section">
+                  <h2>Trips</h2>
+                  <div class="list">
+                    ${historyTrips.length ? historyTrips.slice(0, 6).map((trip) => this._tripTemplate(trip)).join("") : '<div class="empty">No trips in the selected window.</div>'}
+                  </div>
                 </div>
-                <div class="stat">
-                  <div class="stat-label">History Window</div>
-                  <div class="stat-value">${this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS}h</div>
-                </div>
-              </div>
-              <div class="section">
-                <h2>Stops</h2>
-                <div class="list">
-                  ${historyStops.length ? historyStops.slice(0, 6).map((stop, index) => this._stopTemplate(stop, index)).join("") : '<div class="empty">No qualifying stops in the selected window.</div>'}
-                </div>
-              </div>
-              <div class="section">
-                <h2>Trips</h2>
-                <div class="list">
-                  ${historyTrips.length ? historyTrips.slice(0, 6).map((trip) => this._tripTemplate(trip)).join("") : '<div class="empty">No trips in the selected window.</div>'}
-                </div>
-              </div>
+              ` : '<div class="empty">Current-only mode hides routes, stops, and trips. Turn history back on to inspect the selected member timeline.</div>'}
             ` : '<div class="empty">Select a member to load history and trip detail.</div>'}
           </div>
         </div>
@@ -458,6 +622,10 @@ class PresenceTimelinePanel extends HTMLElement {
     `;
 
     this.shadowRoot.querySelector("#refresh-button")?.addEventListener("click", () => this._loadSummary(true));
+    this.shadowRoot.querySelector("#toggle-history-button")?.addEventListener("click", () => this._toggleHistoryRoutes());
+    this.shadowRoot.querySelector("#history-window-select")?.addEventListener("change", (event) => {
+      this._handleHistoryWindowChange(event.target.value);
+    });
     this.shadowRoot.querySelectorAll(".badge").forEach((button) => {
       button.addEventListener("click", () => this._loadMemberPanel(button.dataset.memberId));
     });
@@ -480,13 +648,19 @@ class PresenceTimelinePanel extends HTMLElement {
 
   _badgeTemplate(member) {
     const selected = member.member_id === this._selectedMemberId ? "selected" : "";
+    const batteryLevel = this._batteryLevel(member.battery_level);
     return `
       <button class="badge" ${selected} data-member-id="${member.member_id}">
         <div class="badge-top">
-          <div class="badge-name">${this._escape(member.display_name)}</div>
-          <div class="badge-state">${this._escape(member.status || "unknown")}</div>
+          <div class="badge-copy">
+            <div class="badge-name">${this._escape(member.display_name)}</div>
+            <div class="badge-detail">${this._escape(this._statusText(member))}</div>
+          </div>
+          <div class="badge-side">
+            ${this._batteryTemplate(batteryLevel)}
+            <div class="badge-state">${this._escape(member.status || "unknown")}</div>
+          </div>
         </div>
-        <div class="badge-detail">${this._escape(this._statusText(member))}</div>
       </button>
     `;
   }
@@ -506,7 +680,7 @@ class PresenceTimelinePanel extends HTMLElement {
     const address = stop.address && stop.address !== stop.label ? `<div class="item-submeta">${this._escape(stop.address)}</div>` : "";
     return `
       <button class="item item-button" type="button" aria-pressed="${index === this._selectedStopIndex}" data-stop-index="${index}">
-        <div class="item-title">${this._escape(title)}${stop.is_current ? " · Current" : ""}</div>
+        <div class="item-title">${this._escape(stop.waypointLabel || "")}${stop.waypointLabel ? " · " : ""}${this._escape(title)}${stop.is_current ? " · Current" : ""}</div>
         <div class="item-meta">${durationMinutes} min · ${this._escape(this._formatDateTime(stop.started_at))} to ${this._escape(this._formatDateTime(stop.ended_at))}</div>
         ${address}
       </button>
@@ -526,49 +700,14 @@ class PresenceTimelinePanel extends HTMLElement {
   }
 
   _statusText(member) {
-    if (member.status === "stopped" && member.status_detail) {
-      return `Stopped at ${member.status_detail}`;
-    }
-    if (member.status === "moving") {
-      return member.current_location_label ? `Moving near ${member.current_location_label}` : "Moving";
-    }
-    return "No recent location";
+    return formatMemberBadgeStatus(member);
   }
 
   _buildMapModel(selectedMember, memberPanel) {
-    const markers = [];
-    const stops = [];
-
-    for (const member of this._summary) {
-      if (member.latitude == null || member.longitude == null) {
-        continue;
-      }
-      markers.push({
-        memberId: member.member_id,
-        label: member.display_name,
-        status: member.status,
-        detail: this._statusText(member),
-        observedAt: member.observed_at || member.last_seen_at,
-        latitude: member.latitude,
-        longitude: member.longitude,
-        batteryLevel: member.battery_level,
-        selected: member.member_id === this._selectedMemberId,
-      });
-    }
-
-    for (const stop of memberPanel?.stops ?? []) {
-      if (stop.latitude == null || stop.longitude == null) {
-        continue;
-      }
-      stops.push(stop);
-    }
-
-    return {
-      markerCount: markers.length,
-      markers,
-      historySegments: buildHistorySegments(memberPanel?.history ?? [], memberPanel?.timeline ?? []),
-      stops,
-    };
+    return buildPanelMapModel(this._summary, selectedMember?.member_id ?? this._selectedMemberId, memberPanel, {
+      showHistory: this._showHistoryRoutes,
+      buildHistorySegments,
+    });
   }
 
   async _renderMapFrame(mapModel) {
@@ -762,7 +901,7 @@ class PresenceTimelinePanel extends HTMLElement {
               const marker = L.marker([stop.latitude, stop.longitude], {
                 icon: L.divIcon({
                   className: "stop-waypoint" + (stop.is_current ? " current" : ""),
-                  html: "<span>" + (index + 1) + "</span>",
+                  html: "<span>" + escapeHtml(stop.waypointLabel || String.fromCharCode(65 + (index % 26))) + "</span>",
                   iconSize: [28, 28],
                   iconAnchor: [14, 14],
                 }),
@@ -774,7 +913,7 @@ class PresenceTimelinePanel extends HTMLElement {
                 : "";
 
               marker.bindPopup(\`
-                <div class="popup-title">\${escapeHtml(stop.label || "Unnamed stop")}\${stop.is_current ? " · Current" : ""}</div>
+                <div class="popup-title">\${escapeHtml(stop.waypointLabel || "")}\${stop.waypointLabel ? " · " : ""}\${escapeHtml(stop.label || "Unnamed stop")}\${stop.is_current ? " · Current" : ""}</div>
                 \${address}
                 <div class="popup-line">\${durationMinutes} min</div>
                 <div class="popup-line">\${escapeHtml(formatDateTime(stop.started_at))} to \${escapeHtml(formatDateTime(stop.ended_at))}</div>
@@ -815,6 +954,34 @@ class PresenceTimelinePanel extends HTMLElement {
         </body>
       </html>
     `;
+  }
+
+  _batteryLevel(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, Math.round(numeric)));
+  }
+
+  _batteryTemplate(level) {
+    const batteryText = this._formatBatteryText(level);
+    if (level == null) {
+      return `<div class="battery-chip" title="${this._escape(batteryText)}">${this._escape(batteryText)}</div>`;
+    }
+    return `
+      <div class="battery-chip" title="${this._escape(batteryText)}">
+        <span class="battery-icon" aria-hidden="true">
+          <span class="battery-fill" style="width: ${level}%;"></span>
+        </span>
+        <span>${this._escape(batteryText)}</span>
+      </div>
+    `;
+  }
+
+  _formatBatteryText(value) {
+    const level = this._batteryLevel(value);
+    return level == null ? "Unknown" : `${level}%`;
   }
 
   _formatDateTime(value) {
