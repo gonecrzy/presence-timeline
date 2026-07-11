@@ -465,6 +465,15 @@ class LocationRepository:
         )
         return self.db.scalar(stmt)
 
+    def get_latest_point_for_source_entity(self, source_entity_id: str) -> LocationPoint | None:
+        stmt: Select[tuple[LocationPoint]] = (
+            select(LocationPoint)
+            .where(LocationPoint.source_entity_id == source_entity_id)
+            .order_by(LocationPoint.observed_at.desc())
+            .limit(1)
+        )
+        return self.db.scalar(stmt)
+
     def list_member_history(
         self,
         member_id: UUID,

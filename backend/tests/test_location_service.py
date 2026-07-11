@@ -73,6 +73,12 @@ class FakeLocationRepository:
             return None
         return sorted(matching, key=lambda item: item.observed_at, reverse=True)[0]
 
+    def get_latest_point_for_source_entity(self, source_entity_id: str):
+        matching = [point for point in self.points if point.source_entity_id == source_entity_id]
+        if not matching:
+            return None
+        return sorted(matching, key=lambda item: item.observed_at, reverse=True)[0]
+
     def enqueue_reverse_geocode_cache(self, latitude_rounded: float, longitude_rounded: float):
         key = (latitude_rounded, longitude_rounded)
         created = key not in self.reverse_geocode_cache
@@ -221,3 +227,106 @@ def test_latest_and_history_views_are_ordered_by_observed_at() -> None:
         start + timedelta(minutes=15),
         start + timedelta(minutes=45),
     ]
+
+
+def test_ingest_suppresses_near_duplicate_point_within_dedupe_window() -> None:
+    repository = FakeLocationRepository()
+    member_id = uuid4()
+    repository.members["device_tracker.sam_phone"] = {"id": member_id, "display_name": "Sam"}
+    service = LocationService(repository)
+    start = datetime(2026, 7, 8, 20, 0, tzinfo=UTC)
+
+    first = service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=start,
+            latitude=37.4200,
+            longitude=-122.0800,
+            accuracy_m=10.0,
+        ),
+        received_at=start,
+    )
+    second = service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=start + timedelta(minutes=5),
+            latitude=37.42003,
+            longitude=-122.08003,
+            accuracy_m=12.0,
+        ),
+        received_at=start + timedelta(minutes=5),
+    )
+
+    assert first is not None
+    assert second is None
+    assert len(repository.points) == 1
+
+
+def test_ingest_keeps_point_when_member_actually_moved() -> None:
+    repository = FakeLocationRepository()
+    member_id = uuid4()
+    repository.members["device_tracker.sam_phone"] = {"id": member_id, "display_name": "Sam"}
+    service = LocationService(repository)
+    start = datetime(2026, 7, 8, 20, 0, tzinfo=UTC)
+
+    service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=start,
+            latitude=37.4200,
+            longitude=-122.0800,
+            accuracy_m=10.0,
+        ),
+        received_at=start,
+    )
+    stored = service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=start + timedelta(minutes=5),
+            latitude=37.4212,
+            longitude=-122.0800,
+            accuracy_m=10.0,
+        ),
+        received_at=start + timedelta(minutes=5),
+    )
+
+    assert stored is not None
+    assert len(repository.points) == 2
+
+
+def test_ingest_keeps_periodic_stationary_sample_after_dedupe_window() -> None:
+    repository = FakeLocationRepository()
+    member_id = uuid4()
+    repository.members["device_tracker.sam_phone"] = {"id": member_id, "display_name": "Sam"}
+    service = LocationService(repository)
+    start = datetime(2026, 7, 8, 20, 0, tzinfo=UTC)
+
+    service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=start,
+            latitude=37.4200,
+            longitude=-122.0800,
+            accuracy_m=10.0,
+        ),
+        received_at=start,
+    )
+    stored = service.ingest(
+        NormalizedLocationEvent(
+            provider=ProviderName.HOME_ASSISTANT,
+            source_entity_id="device_tracker.sam_phone",
+            observed_at=start + timedelta(minutes=20),
+            latitude=37.42003,
+            longitude=-122.08003,
+            accuracy_m=12.0,
+        ),
+        received_at=start + timedelta(minutes=20),
+    )
+
+    assert stored is not None
+    assert len(repository.points) == 2

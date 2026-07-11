@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     reverse_geocode_batch_size: int = 10
     reverse_geocode_backfill_limit: int = 500
     reverse_geocode_worker_interval_seconds: int = 60
+    location_dedupe_window_seconds: int = 900
+    location_dedupe_min_distance_m: float = 15.0
+    location_dedupe_max_distance_m: float = 40.0
 
     model_config = SettingsConfigDict(
         env_prefix="PRESENCE_TIMELINE_",
