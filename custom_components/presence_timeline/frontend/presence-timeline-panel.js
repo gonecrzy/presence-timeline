@@ -9,7 +9,7 @@ const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = "0.3.3";
+const ASSET_VERSION = "0.3.4";
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -257,6 +257,7 @@ class PresenceTimelinePanel extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: 12px;
+          min-height: clamp(560px, calc(100vh - 210px), 860px);
         }
         .map-header, .detail-header {
           display: flex;
@@ -266,8 +267,8 @@ class PresenceTimelinePanel extends HTMLElement {
         }
         .map-stage {
           position: relative;
-          min-height: 520px;
-          height: 520px;
+          min-height: clamp(520px, calc(100vh - 270px), 780px);
+          height: 100%;
           border-radius: 18px;
           overflow: hidden;
           background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
@@ -362,9 +363,11 @@ class PresenceTimelinePanel extends HTMLElement {
           .content {
             grid-template-columns: 1fr;
           }
+          .map-card {
+            min-height: clamp(480px, calc(100vh - 260px), 680px);
+          }
           .map-stage {
-            min-height: 420px;
-            height: 420px;
+            min-height: clamp(420px, calc(100vh - 320px), 620px);
           }
         }
       </style>
