@@ -1,10 +1,15 @@
+import {
+  buildHistorySegments,
+  createMapRenderSignature,
+} from "./presence-timeline-map-utils.js";
+
 const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
 const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
 const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = "0.3.2";
+const ASSET_VERSION = "0.3.3";
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -17,12 +22,16 @@ class PresenceTimelinePanel extends HTMLElement {
     this._memberPanel = null;
     this._loading = false;
     this._error = null;
+    this._renderedMapSignature = null;
   }
 
   set hass(hass) {
+    const shouldRender = this._hass == null;
     this._hass = hass;
     this._ensureLoaded();
-    this._render();
+    if (shouldRender) {
+      this._render();
+    }
   }
 
   set panel(panel) {
@@ -501,7 +510,6 @@ class PresenceTimelinePanel extends HTMLElement {
 
   _buildMapModel(selectedMember, memberPanel) {
     const markers = [];
-    const historyPoints = [];
     const stops = [];
 
     for (const member of this._summary) {
@@ -521,20 +529,6 @@ class PresenceTimelinePanel extends HTMLElement {
       });
     }
 
-    if (selectedMember && memberPanel?.history?.length) {
-      for (const point of memberPanel.history) {
-        if (point.latitude == null || point.longitude == null) {
-          continue;
-        }
-        historyPoints.push({
-          latitude: point.latitude,
-          longitude: point.longitude,
-          observedAt: point.observed_at,
-          batteryLevel: point.battery_level,
-        });
-      }
-    }
-
     for (const stop of memberPanel?.stops ?? []) {
       if (stop.latitude == null || stop.longitude == null) {
         continue;
@@ -545,7 +539,7 @@ class PresenceTimelinePanel extends HTMLElement {
     return {
       markerCount: markers.length,
       markers,
-      historyPoints,
+      historySegments: buildHistorySegments(memberPanel?.history ?? [], memberPanel?.timeline ?? []),
       stops,
     };
   }
@@ -553,10 +547,17 @@ class PresenceTimelinePanel extends HTMLElement {
   async _renderMapFrame(mapModel) {
     const frame = this.shadowRoot.getElementById("map-frame");
     if (!frame || !mapModel.markerCount) {
+      this._renderedMapSignature = null;
+      return;
+    }
+
+    const nextSignature = createMapRenderSignature(mapModel);
+    if (nextSignature === this._renderedMapSignature) {
       return;
     }
 
     frame.srcdoc = this._mapDocument(mapModel);
+    this._renderedMapSignature = nextSignature;
   }
 
   _mapDocument(mapModel) {
@@ -684,8 +685,12 @@ class PresenceTimelinePanel extends HTMLElement {
               \`);
             }
 
-            if (model.historyPoints.length > 1) {
-              const route = model.historyPoints.map((point) => {
+            for (const segment of model.historySegments) {
+              if (segment.length < 2) {
+                continue;
+              }
+
+              const route = segment.map((point) => {
                 addBounds(point.latitude, point.longitude);
                 return [point.latitude, point.longitude];
               });
