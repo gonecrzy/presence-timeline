@@ -5,7 +5,7 @@ from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.family import Device, Family, Member
-from app.models.location import DailySummary, LocationPoint, ReverseGeocodeCache, SafetyEvent
+from app.models.location import DailySummary, LocationPoint, ProviderStatus, ReverseGeocodeCache, SafetyEvent
 from app.models.place import Place
 from app.models.trip import Trip
 
@@ -269,6 +269,41 @@ class LocationRepository:
 
     def commit(self) -> None:
         self.db.commit()
+
+    def get_provider_status(self, provider: str) -> ProviderStatus | None:
+        stmt: Select[tuple[ProviderStatus]] = select(ProviderStatus).where(ProviderStatus.provider == provider)
+        return self.db.scalar(stmt)
+
+    def upsert_provider_status(
+        self,
+        provider: str,
+        *,
+        state: str | None = None,
+        last_snapshot_at: datetime | None = None,
+        last_connected_at: datetime | None = None,
+        last_event_at: datetime | None = None,
+        last_error_at: datetime | None = None,
+        last_error_message: str | None = None,
+        retry_delay_seconds: int | None = None,
+    ) -> ProviderStatus:
+        row = self.get_provider_status(provider)
+        if row is None:
+            row = ProviderStatus(provider=provider)
+            self.db.add(row)
+
+        if state is not None:
+            row.state = state
+        if last_snapshot_at is not None:
+            row.last_snapshot_at = last_snapshot_at
+        if last_connected_at is not None:
+            row.last_connected_at = last_connected_at
+        if last_event_at is not None:
+            row.last_event_at = last_event_at
+        row.last_error_at = last_error_at
+        row.last_error_message = last_error_message
+        row.retry_delay_seconds = retry_delay_seconds
+        self.db.flush()
+        return row
 
     def delete_location_points_older_than(self, cutoff: datetime) -> int:
         result = self.db.execute(

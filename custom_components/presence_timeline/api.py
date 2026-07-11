@@ -35,6 +35,31 @@ class MemberSnapshot:
     source_entity_id: str | None
 
 
+@dataclass(slots=True)
+class IntegrationStatusSnapshot:
+    provider: str
+    state: str
+    last_snapshot_at: datetime | None
+    last_connected_at: datetime | None
+    last_event_at: datetime | None
+    last_error_at: datetime | None
+    last_error_message: str | None
+    retry_delay_seconds: int | None
+
+    @classmethod
+    def unknown(cls) -> "IntegrationStatusSnapshot":
+        return cls(
+            provider="home_assistant",
+            state="unknown",
+            last_snapshot_at=None,
+            last_connected_at=None,
+            last_event_at=None,
+            last_error_at=None,
+            last_error_message=None,
+            retry_delay_seconds=None,
+        )
+
+
 class GpsTrackApiClient:
     def __init__(self, session: ClientSession, base_url: str, access_token: str | None = None) -> None:
         self._session = session
@@ -54,6 +79,10 @@ class GpsTrackApiClient:
             snapshot.member_id: snapshot
             for snapshot in (self._parse_member(item) for item in items)
         }
+
+    async def async_get_ingestion_status(self) -> IntegrationStatusSnapshot:
+        payload = await self._async_get_json("/api/v1/home-assistant/status")
+        return self._parse_integration_status(payload)
 
     async def async_get_member_panel(
         self,
@@ -102,6 +131,18 @@ class GpsTrackApiClient:
             battery_level=item.get("battery_level"),
             observed_at=_parse_datetime(item.get("observed_at")),
             source_entity_id=item.get("source_entity_id"),
+        )
+
+    def _parse_integration_status(self, item: dict) -> IntegrationStatusSnapshot:
+        return IntegrationStatusSnapshot(
+            provider=item.get("provider", "home_assistant"),
+            state=item.get("state", "unknown"),
+            last_snapshot_at=_parse_datetime(item.get("last_snapshot_at")),
+            last_connected_at=_parse_datetime(item.get("last_connected_at")),
+            last_event_at=_parse_datetime(item.get("last_event_at")),
+            last_error_at=_parse_datetime(item.get("last_error_at")),
+            last_error_message=item.get("last_error_message"),
+            retry_delay_seconds=item.get("retry_delay_seconds"),
         )
 
 

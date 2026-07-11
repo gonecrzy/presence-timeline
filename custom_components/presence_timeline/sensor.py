@@ -4,13 +4,13 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, PERCENTAGE
+from homeassistant.const import EntityCategory, PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import MemberSnapshot
+from .api import IntegrationStatusSnapshot, MemberSnapshot
 from .const import DOMAIN
 from .coordinator import GpsTrackCoordinator
 
@@ -22,10 +22,24 @@ async def async_setup_entry(
 ) -> None:
     coordinator: GpsTrackCoordinator = hass.data[DOMAIN][entry.entry_id]
     known_member_ids: set[str] = set()
+    status_entities_added = False
 
     @callback
     def async_sync_entities() -> None:
+        nonlocal status_entities_added
         new_entities = []
+        if not status_entities_added:
+            status_entities_added = True
+            new_entities.extend(
+                [
+                    GpsTrackIntegrationStateSensor(coordinator),
+                    GpsTrackIntegrationLastSnapshotSensor(coordinator),
+                    GpsTrackIntegrationLastConnectedSensor(coordinator),
+                    GpsTrackIntegrationLastEventSensor(coordinator),
+                    GpsTrackIntegrationRetryDelaySensor(coordinator),
+                    GpsTrackIntegrationLastErrorSensor(coordinator),
+                ]
+            )
         for member_id in coordinator.data:
             if member_id in known_member_ids:
                 continue
@@ -64,6 +78,120 @@ class GpsTrackMemberSensor(CoordinatorEntity, SensorEntity):
     @property
     def member(self) -> MemberSnapshot | None:
         return self.coordinator.data.get(self._member_id)
+
+
+class GpsTrackIntegrationSensor(CoordinatorEntity, SensorEntity):
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: GpsTrackCoordinator, unique_suffix: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry_id}_{unique_suffix}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{self.coordinator.entry_id}_integration")},
+            name="Presence Timeline",
+            manufacturer="Presence Timeline",
+            model="Home Assistant Integration",
+        )
+
+    @property
+    def integration_status(self) -> IntegrationStatusSnapshot:
+        return self.coordinator.integration_status
+
+
+class GpsTrackIntegrationStateSensor(GpsTrackIntegrationSensor):
+    _attr_name = "Ingestion Status"
+    _attr_icon = "mdi:connection"
+
+    def __init__(self, coordinator: GpsTrackCoordinator) -> None:
+        super().__init__(coordinator, "integration_status")
+
+    @property
+    def native_value(self) -> str:
+        return self.integration_status.state
+
+
+class GpsTrackIntegrationLastSnapshotSensor(GpsTrackIntegrationSensor):
+    _attr_name = "Last Snapshot"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: GpsTrackCoordinator) -> None:
+        super().__init__(coordinator, "integration_last_snapshot")
+
+    @property
+    def available(self) -> bool:
+        return bool(super().available and self.integration_status.last_snapshot_at is not None)
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.integration_status.last_snapshot_at
+
+
+class GpsTrackIntegrationLastConnectedSensor(GpsTrackIntegrationSensor):
+    _attr_name = "Last Connected"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: GpsTrackCoordinator) -> None:
+        super().__init__(coordinator, "integration_last_connected")
+
+    @property
+    def available(self) -> bool:
+        return bool(super().available and self.integration_status.last_connected_at is not None)
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.integration_status.last_connected_at
+
+
+class GpsTrackIntegrationLastEventSensor(GpsTrackIntegrationSensor):
+    _attr_name = "Last Event"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: GpsTrackCoordinator) -> None:
+        super().__init__(coordinator, "integration_last_event")
+
+    @property
+    def available(self) -> bool:
+        return bool(super().available and self.integration_status.last_event_at is not None)
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.integration_status.last_event_at
+
+
+class GpsTrackIntegrationRetryDelaySensor(GpsTrackIntegrationSensor):
+    _attr_name = "Retry Delay"
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+
+    def __init__(self, coordinator: GpsTrackCoordinator) -> None:
+        super().__init__(coordinator, "integration_retry_delay")
+
+    @property
+    def available(self) -> bool:
+        return bool(super().available and self.integration_status.retry_delay_seconds is not None)
+
+    @property
+    def native_value(self) -> int | None:
+        return self.integration_status.retry_delay_seconds
+
+
+class GpsTrackIntegrationLastErrorSensor(GpsTrackIntegrationSensor):
+    _attr_name = "Last Error"
+    _attr_icon = "mdi:alert-circle-outline"
+
+    def __init__(self, coordinator: GpsTrackCoordinator) -> None:
+        super().__init__(coordinator, "integration_last_error")
+
+    @property
+    def available(self) -> bool:
+        return bool(super().available and self.integration_status.last_error_message)
+
+    @property
+    def native_value(self) -> str | None:
+        return self.integration_status.last_error_message
 
 
 class GpsTrackMemberBatterySensor(GpsTrackMemberSensor):

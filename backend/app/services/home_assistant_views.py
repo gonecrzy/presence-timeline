@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import UUID
 
+from app.core.config import get_settings
 from app.services.member_views import MemberViewService
 
 STATUS_MOVING = "moving"
@@ -44,6 +45,32 @@ class HomeAssistantViewService:
                 }
             )
         return items
+
+    def ingestion_status(self) -> dict:
+        settings = get_settings()
+        status = self.member_views.repository.get_provider_status("home_assistant")
+        if status is None:
+            return {
+                "provider": "home_assistant",
+                "state": "disabled" if not settings.enable_home_assistant_ingestion else "unknown",
+                "last_snapshot_at": None,
+                "last_connected_at": None,
+                "last_event_at": None,
+                "last_error_at": None,
+                "last_error_message": None,
+                "retry_delay_seconds": None,
+            }
+
+        return {
+            "provider": status.provider,
+            "state": status.state,
+            "last_snapshot_at": status.last_snapshot_at,
+            "last_connected_at": status.last_connected_at,
+            "last_event_at": status.last_event_at,
+            "last_error_at": status.last_error_at,
+            "last_error_message": status.last_error_message,
+            "retry_delay_seconds": status.retry_delay_seconds,
+        }
 
     def member_panel(
         self,

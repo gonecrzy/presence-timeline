@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auth import AppPrincipal, require_app_access
 from app.core.database import get_db
 from app.schemas.home_assistant import (
+    HomeAssistantIngestionStatusResponse,
     HomeAssistantMemberPanelResponse,
     HomeAssistantMemberSummaryResponse,
     HomeAssistantSummaryListResponse,
@@ -32,6 +33,16 @@ def get_summary(
             for item in service.summary(principal.family_slug)
         ]
     )
+
+
+@router.get("/status")
+def get_status(
+    *,
+    principal: Annotated[AppPrincipal, Depends(require_app_access)],
+    service: Annotated[HomeAssistantViewService, Depends(get_home_assistant_view_service)],
+) -> HomeAssistantIngestionStatusResponse:
+    _ = principal
+    return HomeAssistantIngestionStatusResponse.model_validate(service.ingestion_status())
 
 
 @router.get("/members/{member_id}/panel")

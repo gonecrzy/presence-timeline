@@ -36,6 +36,18 @@ class FakeLocationService:
         self.events.append(event)
 
 
+class CallbackRecorder:
+    def __init__(self) -> None:
+        self.connected_calls = 0
+        self.events = []
+
+    def on_connected(self) -> None:
+        self.connected_calls += 1
+
+    def on_event(self, event: NormalizedLocationEvent) -> None:
+        self.events.append(event)
+
+
 @pytest.mark.anyio
 async def test_ingestion_runner_processes_provider_events() -> None:
     provider = FakeProvider()
@@ -47,3 +59,21 @@ async def test_ingestion_runner_processes_provider_events() -> None:
     assert provider.connected is True
     assert provider.closed is True
     assert location_service.events[0].source_entity_id == "device_tracker.sam_phone"
+
+
+@pytest.mark.anyio
+async def test_ingestion_runner_emits_connected_and_event_callbacks() -> None:
+    provider = FakeProvider()
+    location_service = FakeLocationService()
+    recorder = CallbackRecorder()
+
+    processed = await HomeAssistantIngestionRunner(
+        provider,
+        location_service,
+        on_connected=recorder.on_connected,
+        on_event=recorder.on_event,
+    ).run(max_events=1)
+
+    assert processed == 1
+    assert recorder.connected_calls == 1
+    assert [event.source_entity_id for event in recorder.events] == ["device_tracker.sam_phone"]

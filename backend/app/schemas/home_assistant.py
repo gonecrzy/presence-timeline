@@ -27,6 +27,17 @@ class HomeAssistantSummaryListResponse(BaseModel):
     items: list[HomeAssistantMemberSummaryResponse]
 
 
+class HomeAssistantIngestionStatusResponse(BaseModel):
+    provider: str
+    state: str = "unknown"
+    last_snapshot_at: datetime | None = None
+    last_connected_at: datetime | None = None
+    last_event_at: datetime | None = None
+    last_error_at: datetime | None = None
+    last_error_message: str | None = None
+    retry_delay_seconds: int | None = None
+
+
 class HomeAssistantMemberPanelResponse(BaseModel):
     member: HomeAssistantMemberSummaryResponse
     history: list[LocationPointResponse]

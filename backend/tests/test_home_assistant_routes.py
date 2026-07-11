@@ -94,6 +94,18 @@ class StubHomeAssistantViews:
             ],
         }
 
+    def ingestion_status(self):
+        return {
+            "provider": "home_assistant",
+            "state": "connected",
+            "last_snapshot_at": "2026-07-11T08:55:00Z",
+            "last_connected_at": "2026-07-11T08:56:00Z",
+            "last_event_at": "2026-07-11T09:00:00Z",
+            "last_error_at": None,
+            "last_error_message": None,
+            "retry_delay_seconds": None,
+        }
+
 
 def test_home_assistant_summary_returns_current_member_snapshot() -> None:
     stub = StubHomeAssistantViews()
@@ -206,4 +218,25 @@ def test_home_assistant_member_panel_returns_history_timeline_and_stops() -> Non
                 "is_current": True,
             }
         ],
+    }
+
+
+def test_home_assistant_status_returns_ingestion_diagnostics() -> None:
+    stub = StubHomeAssistantViews()
+    app.dependency_overrides[get_home_assistant_view_service] = lambda: stub
+    try:
+        response = client.get("/api/v1/home-assistant/status")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "home_assistant",
+        "state": "connected",
+        "last_snapshot_at": "2026-07-11T08:55:00Z",
+        "last_connected_at": "2026-07-11T08:56:00Z",
+        "last_event_at": "2026-07-11T09:00:00Z",
+        "last_error_at": None,
+        "last_error_message": None,
+        "retry_delay_seconds": None,
     }

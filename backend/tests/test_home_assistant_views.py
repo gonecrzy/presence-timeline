@@ -74,6 +74,16 @@ class FakeHomeAssistantRepository:
                 source_entity_id="device_tracker.sam_location",
             )
         ]
+        self.provider_status = SimpleNamespace(
+            provider="home_assistant",
+            state="connected",
+            last_snapshot_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            last_connected_at=datetime(2026, 7, 8, 20, 1, tzinfo=UTC),
+            last_event_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            last_error_at=None,
+            last_error_message=None,
+            retry_delay_seconds=None,
+        )
 
     def list_members_for_family_slug(self, family_slug: str):
         assert family_slug == "family-alpha"
@@ -122,6 +132,10 @@ class FakeHomeAssistantRepository:
     def list_trips_for_member_range(self, member_id, start, end):
         assert member_id == self.member.id
         return self.trips
+
+    def get_provider_status(self, provider: str):
+        assert provider == "home_assistant"
+        return self.provider_status
 
 
 class ExplodingReverseGeocoder:
@@ -214,3 +228,26 @@ def test_home_assistant_summary_hides_presence_timeline_mirror_members(monkeypat
     items = service.summary("family-alpha")
 
     assert [item["display_name"] for item in items] == ["Sam"]
+
+
+def test_home_assistant_ingestion_status_returns_provider_diagnostics(monkeypatch) -> None:
+    repository = FakeHomeAssistantRepository()
+    monkeypatch.setattr(
+        "app.services.member_views.LocationRepository",
+        lambda db: repository,
+    )
+
+    service = HomeAssistantViewService(db=None)
+
+    status = service.ingestion_status()
+
+    assert status == {
+        "provider": "home_assistant",
+        "state": "connected",
+        "last_snapshot_at": datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+        "last_connected_at": datetime(2026, 7, 8, 20, 1, tzinfo=UTC),
+        "last_event_at": datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+        "last_error_at": None,
+        "last_error_message": None,
+        "retry_delay_seconds": None,
+    }
