@@ -11,7 +11,7 @@ from .const import DATA_COORDINATORS, DOMAIN, PANEL_MEMBER_API, PANEL_SUMMARY_AP
 
 class GpsTrackPanelSummaryView(HomeAssistantView):
     url = PANEL_SUMMARY_API
-    name = "api:gpstrack:panel:summary"
+    name = "api:presence_timeline:panel:summary"
 
     async def get(self, request: web.Request) -> web.Response:
         coordinator = _get_primary_coordinator(request)
@@ -21,7 +21,7 @@ class GpsTrackPanelSummaryView(HomeAssistantView):
 
 class GpsTrackPanelMemberView(HomeAssistantView):
     url = PANEL_MEMBER_API
-    name = "api:gpstrack:panel:member"
+    name = "api:presence_timeline:panel:member"
 
     async def get(self, request: web.Request, member_id: str) -> web.Response:
         start = request.query.get("start")
@@ -52,5 +52,5 @@ def _get_primary_coordinator(request: web.Request):
             if key not in (DATA_COORDINATORS, DOMAIN) and hasattr(value, "api")
         }
     if not coordinators:
-        raise web.HTTPServiceUnavailable(reason="GpsTrack integration is not configured.")
+        raise web.HTTPServiceUnavailable(reason="Presence Timeline integration is not configured.")
     return next(iter(coordinators.values()))

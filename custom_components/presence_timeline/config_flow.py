@@ -79,7 +79,7 @@ async def _validate_input(hass: HomeAssistant, user_input: dict[str, Any]) -> di
         raise CannotConnect from err
 
     parsed = urlparse(user_input[CONF_BASE_URL])
-    title = parsed.hostname or "GpsTrack"
+    title = parsed.hostname or "Presence Timeline"
     return {"title": title}
 
 

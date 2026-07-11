@@ -11,7 +11,7 @@ Build a private, self-hosted Home Assistant integration and dashboard stack that
 ## Current boundaries
 
 - Home Assistant remains the live event source.
-- `GpsTrack API` subscribes to Home Assistant state, normalizes it, stores independent history, and derives higher-level views.
+- `Presence Timeline API` subscribes to Home Assistant state, normalizes it, stores independent history, and derives higher-level views.
 - The current delivery surface is a standalone REST API plus workers, not yet a Home Assistant-native integration or dashboard.
 
 ## Current backend components
@@ -48,7 +48,7 @@ These tables are still useful for the pivot because they already represent backe
 - PostgreSQL + PostGIS
 - Raw points include timestamps, source/provider metadata, battery, and spatial fields
 - Derived trips, daily summaries, stop summaries, and safe-zone events are stored separately from raw history
-- Retention is controlled by `GPSTRACK_RETENTION_DAYS`
+- Retention is controlled by `PRESENCE_TIMELINE_RETENTION_DAYS`
 - Schema evolution is managed through Alembic migrations
 
 ### Auth posture

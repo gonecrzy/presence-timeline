@@ -1,1 +1,1 @@
-"""GpsTrack backend package."""
+"""Presence Timeline backend package."""

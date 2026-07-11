@@ -48,7 +48,7 @@ Based on the current code, the sidecar or add-on model is the cleanest fit becau
 
 ### Slice 2: Home Assistant integration shell
 
-Build `custom_components/gpstrack/` with:
+Build `custom_components/presence_timeline/` with:
 
 - config entry for service URL and access token
 - coordinator to fetch member snapshots and summaries
@@ -77,6 +77,6 @@ After the product surface exists:
 
 If you want to keep moving on this branch, the highest-leverage next implementation is:
 
-1. Scaffold a Home Assistant custom integration shell in `custom_components/gpstrack/`.
+1. Scaffold a Home Assistant custom integration shell in `custom_components/presence_timeline/`.
 2. Add one integration endpoint in the backend dedicated to dashboard summary data.
 3. Wire the integration to expose current member status in Home Assistant.

@@ -78,14 +78,14 @@ class GpsTrackApiClient:
             timeout=API_TIMEOUT_SECONDS,
         ) as response:
             if response.status in (401, 403):
-                raise GpsTrackApiAuthError("GpsTrack backend rejected authentication.")
+                raise GpsTrackApiAuthError("Presence Timeline backend rejected authentication.")
             if response.status >= 400:
                 body = await response.text()
-                raise GpsTrackApiError(f"GpsTrack backend request failed: {response.status} {body}")
+                raise GpsTrackApiError(f"Presence Timeline backend request failed: {response.status} {body}")
             try:
                 return await response.json()
             except (ContentTypeError, ValueError) as err:
-                raise GpsTrackApiError("GpsTrack backend returned invalid JSON.") from err
+                raise GpsTrackApiError("Presence Timeline backend returned invalid JSON.") from err
 
     def _parse_member(self, item: dict) -> MemberSnapshot:
         return MemberSnapshot(

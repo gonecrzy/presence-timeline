@@ -14,15 +14,15 @@ class HomeAssistantBootstrapMember(BaseModel):
 
 
 class Settings(BaseSettings):
-    app_name: str = "GpsTrack API"
+    app_name: str = "Presence Timeline API"
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
-    database_url: str = "postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack"
+    database_url: str = "postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline"
     retention_days: int = 7
     auth_mode: Literal["open", "oidc"] = "open"
     open_auth_family_slug: str = "dev-family"
     open_auth_parent_subject: str = "dev-parent"
-    default_family_name: str = "GpsTrack Family"
+    default_family_name: str = "Presence Timeline Family"
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None
     oidc_audience: str | None = None
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     enable_reverse_geocoding: bool = True
     reverse_geocode_url: str = "https://nominatim.openstreetmap.org/reverse"
     search_geocode_url: str = "https://nominatim.openstreetmap.org/search"
-    reverse_geocode_user_agent: str = "gpstrack/0.1.0"
+    reverse_geocode_user_agent: str = "presence-timeline/0.1.0"
     reverse_geocode_timeout_seconds: float = 5.0
     reverse_geocode_cache_precision: int = 4
     reverse_geocode_retry_minutes: int = 15
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     reverse_geocode_worker_interval_seconds: int = 60
 
     model_config = SettingsConfigDict(
-        env_prefix="GPSTRACK_",
+        env_prefix="PRESENCE_TIMELINE_",
         case_sensitive=False,
     )
 

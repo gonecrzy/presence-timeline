@@ -1,8 +1,8 @@
-const DEFAULT_SUMMARY_API = "/api/gpstrack/panel/summary";
-const DEFAULT_MEMBER_API_TEMPLATE = "/api/gpstrack/panel/members/{member_id}";
+const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
+const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
 const DEFAULT_HISTORY_HOURS = 24;
 
-class GpsTrackPanel extends HTMLElement {
+class PresenceTimelinePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -125,7 +125,7 @@ class GpsTrackPanel extends HTMLElement {
       } catch (_err) {
         detail = await response.text();
       }
-      throw new Error(`GpsTrack panel request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
+      throw new Error(`Presence Timeline panel request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
     }
     return response.json();
   }
@@ -353,8 +353,8 @@ class GpsTrackPanel extends HTMLElement {
       <div class="page">
         <div class="header">
           <div class="title">
-            <h1>GpsTrack</h1>
-            <div class="subtitle">Current family map with member history on selection</div>
+            <h1>Presence Timeline</h1>
+            <div class="subtitle">Location history and family presence timelines for Home Assistant.</div>
           </div>
           <div class="toolbar">
             <button id="refresh-button" type="button">${this._loading ? "Refreshing..." : "Refresh"}</button>
@@ -453,7 +453,7 @@ class GpsTrackPanel extends HTMLElement {
 
     return `
       <div class="map-stage">
-        <svg viewBox="0 0 1000 640" role="img" aria-label="GpsTrack family map">
+        <svg viewBox="0 0 1000 640" role="img" aria-label="Presence Timeline family map">
           ${polyline}
           ${markers}
         </svg>
@@ -574,7 +574,7 @@ class GpsTrackPanel extends HTMLElement {
 
   _normalizeError(err) {
     if (!err) {
-      return "Unknown GpsTrack error";
+      return "Unknown Presence Timeline error";
     }
     if (typeof err === "string") {
       return err;
@@ -599,4 +599,4 @@ class GpsTrackPanel extends HTMLElement {
   }
 }
 
-customElements.define("gpstrack-panel", GpsTrackPanel);
+customElements.define("presence-timeline-panel", PresenceTimelinePanel);

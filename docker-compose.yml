@@ -1,19 +1,19 @@
-name: gpstrack
+name: presence-timeline
 
 services:
   db:
     image: postgis/postgis:16-3.4
-    container_name: gpstrack-db
+    container_name: presence-timeline-db
     environment:
-      POSTGRES_DB: gpstrack
-      POSTGRES_USER: gpstrack
-      POSTGRES_PASSWORD: gpstrack
+      POSTGRES_DB: presence_timeline
+      POSTGRES_USER: presence_timeline
+      POSTGRES_PASSWORD: presence_timeline
     ports:
-      - "${GPSTRACK_DB_PORT:-5432}:5432"
+      - "${PRESENCE_TIMELINE_DB_PORT:-5432}:5432"
     volumes:
-      - postgis_data:/var/lib/postgresql/data
+      - presence-timeline-postgis-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gpstrack -d gpstrack"]
+      test: ["CMD-SHELL", "pg_isready -U presence_timeline -d presence_timeline"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,9 +21,9 @@ services:
   migrator:
     build:
       context: ./backend
-    container_name: gpstrack-migrator
+    container_name: presence-timeline-migrator
     environment:
-      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
+      PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
     depends_on:
       db:
         condition: service_healthy
@@ -34,26 +34,26 @@ services:
   api:
     build:
       context: ./backend
-    container_name: gpstrack-api
+    container_name: presence-timeline-api
     environment:
-      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
-      GPSTRACK_APP_NAME: ${GPSTRACK_APP_NAME:-GpsTrack API}
-      GPSTRACK_APP_VERSION: ${GPSTRACK_APP_VERSION:-0.1.0}
-      GPSTRACK_API_V1_PREFIX: ${GPSTRACK_API_V1_PREFIX:-/api/v1}
-      GPSTRACK_RETENTION_DAYS: ${GPSTRACK_RETENTION_DAYS:-7}
-      GPSTRACK_AUTH_MODE: ${GPSTRACK_AUTH_MODE:-open}
-      GPSTRACK_OPEN_AUTH_FAMILY_SLUG: ${GPSTRACK_OPEN_AUTH_FAMILY_SLUG:-dev-family}
-      GPSTRACK_OPEN_AUTH_PARENT_SUBJECT: ${GPSTRACK_OPEN_AUTH_PARENT_SUBJECT:-dev-parent}
-      GPSTRACK_DEFAULT_FAMILY_NAME: ${GPSTRACK_DEFAULT_FAMILY_NAME:-GpsTrack Family}
-      GPSTRACK_HOME_ASSISTANT_WS_URL: ${GPSTRACK_HOME_ASSISTANT_WS_URL:-ws://homeassistant.local:8123/api/websocket}
-      GPSTRACK_HOME_ASSISTANT_ACCESS_TOKEN: ${GPSTRACK_HOME_ASSISTANT_ACCESS_TOKEN:-replace-me}
+      PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
+      PRESENCE_TIMELINE_APP_NAME: ${PRESENCE_TIMELINE_APP_NAME:-Presence Timeline API}
+      PRESENCE_TIMELINE_APP_VERSION: ${PRESENCE_TIMELINE_APP_VERSION:-0.1.0}
+      PRESENCE_TIMELINE_API_V1_PREFIX: ${PRESENCE_TIMELINE_API_V1_PREFIX:-/api/v1}
+      PRESENCE_TIMELINE_RETENTION_DAYS: ${PRESENCE_TIMELINE_RETENTION_DAYS:-7}
+      PRESENCE_TIMELINE_AUTH_MODE: ${PRESENCE_TIMELINE_AUTH_MODE:-open}
+      PRESENCE_TIMELINE_OPEN_AUTH_FAMILY_SLUG: ${PRESENCE_TIMELINE_OPEN_AUTH_FAMILY_SLUG:-dev-family}
+      PRESENCE_TIMELINE_OPEN_AUTH_PARENT_SUBJECT: ${PRESENCE_TIMELINE_OPEN_AUTH_PARENT_SUBJECT:-dev-parent}
+      PRESENCE_TIMELINE_DEFAULT_FAMILY_NAME: ${PRESENCE_TIMELINE_DEFAULT_FAMILY_NAME:-Presence Timeline Family}
+      PRESENCE_TIMELINE_HOME_ASSISTANT_WS_URL: ${PRESENCE_TIMELINE_HOME_ASSISTANT_WS_URL:-ws://homeassistant.local:8123/api/websocket}
+      PRESENCE_TIMELINE_HOME_ASSISTANT_ACCESS_TOKEN: ${PRESENCE_TIMELINE_HOME_ASSISTANT_ACCESS_TOKEN:-replace-me}
     depends_on:
       db:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
     ports:
-      - "${GPSTRACK_API_PORT:-8000}:8000"
+      - "${PRESENCE_TIMELINE_API_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -61,21 +61,21 @@ services:
   ingestor:
     build:
       context: ./backend
-    container_name: gpstrack-ingestor
+    container_name: presence-timeline-ingestor
     environment:
-      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
-      GPSTRACK_APP_NAME: ${GPSTRACK_APP_NAME:-GpsTrack API}
-      GPSTRACK_APP_VERSION: ${GPSTRACK_APP_VERSION:-0.1.0}
-      GPSTRACK_API_V1_PREFIX: ${GPSTRACK_API_V1_PREFIX:-/api/v1}
-      GPSTRACK_RETENTION_DAYS: ${GPSTRACK_RETENTION_DAYS:-7}
-      GPSTRACK_AUTH_MODE: ${GPSTRACK_AUTH_MODE:-open}
-      GPSTRACK_OPEN_AUTH_FAMILY_SLUG: ${GPSTRACK_OPEN_AUTH_FAMILY_SLUG:-dev-family}
-      GPSTRACK_OPEN_AUTH_PARENT_SUBJECT: ${GPSTRACK_OPEN_AUTH_PARENT_SUBJECT:-dev-parent}
-      GPSTRACK_DEFAULT_FAMILY_NAME: ${GPSTRACK_DEFAULT_FAMILY_NAME:-GpsTrack Family}
-      GPSTRACK_ENABLE_HOME_ASSISTANT_INGESTION: ${GPSTRACK_ENABLE_HOME_ASSISTANT_INGESTION:-false}
-      GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS: ${GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS:-[]}
-      GPSTRACK_HOME_ASSISTANT_WS_URL: ${GPSTRACK_HOME_ASSISTANT_WS_URL:-ws://homeassistant.local:8123/api/websocket}
-      GPSTRACK_HOME_ASSISTANT_ACCESS_TOKEN: ${GPSTRACK_HOME_ASSISTANT_ACCESS_TOKEN:-replace-me}
+      PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
+      PRESENCE_TIMELINE_APP_NAME: ${PRESENCE_TIMELINE_APP_NAME:-Presence Timeline API}
+      PRESENCE_TIMELINE_APP_VERSION: ${PRESENCE_TIMELINE_APP_VERSION:-0.1.0}
+      PRESENCE_TIMELINE_API_V1_PREFIX: ${PRESENCE_TIMELINE_API_V1_PREFIX:-/api/v1}
+      PRESENCE_TIMELINE_RETENTION_DAYS: ${PRESENCE_TIMELINE_RETENTION_DAYS:-7}
+      PRESENCE_TIMELINE_AUTH_MODE: ${PRESENCE_TIMELINE_AUTH_MODE:-open}
+      PRESENCE_TIMELINE_OPEN_AUTH_FAMILY_SLUG: ${PRESENCE_TIMELINE_OPEN_AUTH_FAMILY_SLUG:-dev-family}
+      PRESENCE_TIMELINE_OPEN_AUTH_PARENT_SUBJECT: ${PRESENCE_TIMELINE_OPEN_AUTH_PARENT_SUBJECT:-dev-parent}
+      PRESENCE_TIMELINE_DEFAULT_FAMILY_NAME: ${PRESENCE_TIMELINE_DEFAULT_FAMILY_NAME:-Presence Timeline Family}
+      PRESENCE_TIMELINE_ENABLE_HOME_ASSISTANT_INGESTION: ${PRESENCE_TIMELINE_ENABLE_HOME_ASSISTANT_INGESTION:-false}
+      PRESENCE_TIMELINE_HOME_ASSISTANT_BOOTSTRAP_MEMBERS: ${PRESENCE_TIMELINE_HOME_ASSISTANT_BOOTSTRAP_MEMBERS:-[]}
+      PRESENCE_TIMELINE_HOME_ASSISTANT_WS_URL: ${PRESENCE_TIMELINE_HOME_ASSISTANT_WS_URL:-ws://homeassistant.local:8123/api/websocket}
+      PRESENCE_TIMELINE_HOME_ASSISTANT_ACCESS_TOKEN: ${PRESENCE_TIMELINE_HOME_ASSISTANT_ACCESS_TOKEN:-replace-me}
     depends_on:
       db:
         condition: service_healthy
@@ -88,14 +88,14 @@ services:
   geocoder:
     build:
       context: ./backend
-    container_name: gpstrack-geocoder
+    container_name: presence-timeline-geocoder
     environment:
-      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
-      GPSTRACK_ENABLE_REVERSE_GEOCODING: ${GPSTRACK_ENABLE_REVERSE_GEOCODING:-true}
-      GPSTRACK_REVERSE_GEOCODE_BATCH_SIZE: ${GPSTRACK_REVERSE_GEOCODE_BATCH_SIZE:-10}
-      GPSTRACK_REVERSE_GEOCODE_BACKFILL_LIMIT: ${GPSTRACK_REVERSE_GEOCODE_BACKFILL_LIMIT:-500}
-      GPSTRACK_REVERSE_GEOCODE_WORKER_INTERVAL_SECONDS: ${GPSTRACK_REVERSE_GEOCODE_WORKER_INTERVAL_SECONDS:-60}
-      GPSTRACK_REVERSE_GEOCODE_RETRY_MINUTES: ${GPSTRACK_REVERSE_GEOCODE_RETRY_MINUTES:-15}
+      PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
+      PRESENCE_TIMELINE_ENABLE_REVERSE_GEOCODING: ${PRESENCE_TIMELINE_ENABLE_REVERSE_GEOCODING:-true}
+      PRESENCE_TIMELINE_REVERSE_GEOCODE_BATCH_SIZE: ${PRESENCE_TIMELINE_REVERSE_GEOCODE_BATCH_SIZE:-10}
+      PRESENCE_TIMELINE_REVERSE_GEOCODE_BACKFILL_LIMIT: ${PRESENCE_TIMELINE_REVERSE_GEOCODE_BACKFILL_LIMIT:-500}
+      PRESENCE_TIMELINE_REVERSE_GEOCODE_WORKER_INTERVAL_SECONDS: ${PRESENCE_TIMELINE_REVERSE_GEOCODE_WORKER_INTERVAL_SECONDS:-60}
+      PRESENCE_TIMELINE_REVERSE_GEOCODE_RETRY_MINUTES: ${PRESENCE_TIMELINE_REVERSE_GEOCODE_RETRY_MINUTES:-15}
     depends_on:
       db:
         condition: service_healthy
@@ -106,4 +106,6 @@ services:
     command: python -u -m app.workers.reverse_geocoding
 
 volumes:
-  postgis_data:
+  presence-timeline-postgis-data:
+    external: true
+    name: gpstrack_postgis_data

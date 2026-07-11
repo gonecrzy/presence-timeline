@@ -23,9 +23,9 @@ def test_open_authenticator_returns_dev_principal() -> None:
 def test_oidc_authenticator_requires_authorization_header() -> None:
     settings = Settings(
         auth_mode="oidc",
-        oidc_issuer_url="https://auth.example.com/application/o/gpstrack/",
-        oidc_client_id="gpstrack-mobile",
-        oidc_audience="gpstrack-api",
+        oidc_issuer_url="https://auth.example.com/application/o/presence-timeline/",
+        oidc_client_id="presence-timeline-mobile",
+        oidc_audience="presence-timeline-api",
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -37,5 +37,5 @@ def test_oidc_authenticator_requires_authorization_header() -> None:
 def test_require_app_access_rejects_incomplete_oidc_configuration() -> None:
     settings = Settings(auth_mode="oidc")
 
-    with pytest.raises(RuntimeError, match="GPSTRACK_OIDC_ISSUER_URL"):
+    with pytest.raises(RuntimeError, match="PRESENCE_TIMELINE_OIDC_ISSUER_URL"):
         require_app_access(settings=settings)

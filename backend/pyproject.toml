@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gpstrack-backend"
+name = "presence-timeline-backend"
 version = "0.1.0"
-description = "Backend foundation for the GpsTrack family location platform"
+description = "Backend foundation for the Presence Timeline family location platform"
 requires-python = ">=3.13"
 dependencies = [
   "alembic>=1.16.4,<2.0.0",

@@ -41,7 +41,7 @@ def test_bootstrap_seeds_family_members_and_entity_mappings() -> None:
 
     service.seed_home_assistant_members(
         family_slug="dev-family",
-        family_name="GpsTrack Family",
+        family_name="Presence Timeline Family",
         members=[
             HomeAssistantBootstrapMember(
                 display_name="Sam",
@@ -52,7 +52,7 @@ def test_bootstrap_seeds_family_members_and_entity_mappings() -> None:
         ],
     )
 
-    assert repository.family == {"slug": "dev-family", "name": "GpsTrack Family", "id": "family-1"}
+    assert repository.family == {"slug": "dev-family", "name": "Presence Timeline Family", "id": "family-1"}
     assert repository.members["Sam"]["is_child"] is True
     assert repository.devices["device_tracker.sam_phone"]["label"] == "Sam Phone"
     assert repository.committed is True

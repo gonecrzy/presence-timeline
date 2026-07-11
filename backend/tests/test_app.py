@@ -17,7 +17,7 @@ def test_root_returns_service_metadata() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["name"] == "GpsTrack API"
+    assert response.json()["name"] == "Presence Timeline API"
 
 
 def test_health_route_reports_retention_window() -> None:
@@ -26,7 +26,7 @@ def test_health_route_reports_retention_window() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "GpsTrack API",
+        "service": "Presence Timeline API",
         "retention_days": 7,
     }
 

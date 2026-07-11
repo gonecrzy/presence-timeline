@@ -34,4 +34,4 @@ class GpsTrackCoordinator(DataUpdateCoordinator[dict[str, MemberSnapshot]]):
         except GpsTrackApiAuthError as err:
             raise ConfigEntryAuthFailed from err
         except (GpsTrackApiError, ClientError, TimeoutError) as err:
-            raise UpdateFailed(f"Unable to fetch GpsTrack summary: {err}") from err
+            raise UpdateFailed(f"Unable to fetch Presence Timeline summary: {err}") from err

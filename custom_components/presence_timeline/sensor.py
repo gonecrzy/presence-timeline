@@ -56,8 +56,8 @@ class GpsTrackMemberSensor(CoordinatorEntity, SensorEntity):
         member = self.member
         return DeviceInfo(
             identifiers={(DOMAIN, self._member_id)},
-            name=member.display_name if member is not None else "GpsTrack Member",
-            manufacturer="GpsTrack",
+            name=member.display_name if member is not None else "Presence Timeline Member",
+            manufacturer="Presence Timeline",
             model="Tracked Member",
         )
 

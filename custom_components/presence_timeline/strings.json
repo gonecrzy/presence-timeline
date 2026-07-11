@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to GpsTrack",
-        "description": "Enter the GpsTrack backend details.",
+        "title": "Connect to Presence Timeline",
+        "description": "Enter the Presence Timeline backend details.",
         "data": {
           "base_url": "Base URL",
           "access_token": "Access token",
@@ -12,12 +12,12 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the GpsTrack backend.",
+      "cannot_connect": "Failed to connect to the Presence Timeline backend.",
       "invalid_auth": "The backend rejected the provided authentication.",
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This GpsTrack backend is already configured."
+      "already_configured": "This Presence Timeline backend is already configured."
     }
   }
 }

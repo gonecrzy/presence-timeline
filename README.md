@@ -1,4 +1,6 @@
-# GpsTrack
+# Presence Timeline
+
+Location history and family presence timelines for Home Assistant.
 
 Private, self-hosted Home Assistant location history service and dashboard backend.
 
@@ -6,7 +8,7 @@ This branch is the Home Assistant-focused fork of the project. The Android app w
 
 ## Repository layout
 
-- `custom_components/gpstrack/`: Home Assistant custom integration intended for HACS delivery
+- `custom_components/presence_timeline/`: Home Assistant custom integration intended for HACS delivery
 - `backend/`: FastAPI service, normalized domain models, Home Assistant provider, and tests
 - `docs/`: architecture notes and branch roadmap
 - `docker-compose.yml`: local API + PostGIS runtime plus background workers
@@ -15,7 +17,7 @@ This branch is the Home Assistant-focused fork of the project. The Android app w
 
 This repo currently uses a sidecar model:
 
-- Home Assistant installs `custom_components/gpstrack/` through HACS or as a manual custom integration.
+- Home Assistant installs `custom_components/presence_timeline/` through HACS or as a manual custom integration.
 - The backend still runs separately in Docker and is reached over HTTP by the integration.
 - Home Assistant is the live event source; the backend owns normalized history, places, trips, stops, and safety derivation.
 - Reverse geocoding is cache-backed and resolved by a background worker, not by live API reads.
@@ -46,11 +48,11 @@ Start the API, database, migrations, and background workers:
 docker compose up --build
 ```
 
-The API will be available at `http://localhost:${GPSTRACK_API_PORT:-8000}` by default.
+The API will be available at `http://localhost:${PRESENCE_TIMELINE_API_PORT:-8000}` by default.
 
 ### 2. Install the Home Assistant integration
 
-Once the repo is on public GitHub, add it to HACS as a custom repository of type `Integration`, then install `GpsTrack`.
+Once the repo is on public GitHub, add it to HACS as a custom repository of type `Integration`, then install `Presence Timeline`.
 
 Current integration behavior:
 
@@ -78,7 +80,7 @@ The backend remains the history engine; the custom integration is the Home Assis
 docker compose up --build
 ```
 
-3. The API will be available at `http://localhost:${GPSTRACK_API_PORT:-8000}`.
+3. The API will be available at `http://localhost:${PRESENCE_TIMELINE_API_PORT:-8000}`.
 
 ## Backend verification
 
@@ -123,7 +125,7 @@ Reverse geocoding runs separately from API reads:
 
 Optional overrides:
 
-- `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can pre-seed member metadata such as child/parent classification.
+- `PRESENCE_TIMELINE_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can pre-seed member metadata such as child/parent classification.
 - Discovered devices can be hidden later through the member device ignore API instead of removing them from config.
 
 ## Database lifecycle

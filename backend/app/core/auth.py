@@ -68,9 +68,9 @@ def _validate_oidc_settings(settings: Settings) -> None:
     missing = [
         name
         for name, value in (
-            ("GPSTRACK_OIDC_ISSUER_URL", settings.oidc_issuer_url),
-            ("GPSTRACK_OIDC_CLIENT_ID", settings.oidc_client_id),
-            ("GPSTRACK_OIDC_AUDIENCE", settings.oidc_audience),
+            ("PRESENCE_TIMELINE_OIDC_ISSUER_URL", settings.oidc_issuer_url),
+            ("PRESENCE_TIMELINE_OIDC_CLIENT_ID", settings.oidc_client_id),
+            ("PRESENCE_TIMELINE_OIDC_AUDIENCE", settings.oidc_audience),
         )
         if not value
     ]
