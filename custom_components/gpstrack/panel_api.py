@@ -6,7 +6,7 @@ from aiohttp import web
 from homeassistant.components.http import KEY_HASS
 from homeassistant.helpers.http import HomeAssistantView
 
-from .const import DOMAIN, PANEL_MEMBER_API, PANEL_SUMMARY_API
+from .const import DATA_COORDINATORS, DOMAIN, PANEL_MEMBER_API, PANEL_SUMMARY_API
 
 
 class GpsTrackPanelSummaryView(HomeAssistantView):
@@ -44,11 +44,7 @@ class GpsTrackPanelMemberView(HomeAssistantView):
 def _get_primary_coordinator(request: web.Request):
     hass = request.app[KEY_HASS]
     domain_data = hass.data.get(DOMAIN, {})
-    coordinators = [
-        value
-        for key, value in domain_data.items()
-        if isinstance(key, str) and not key.startswith("__")
-    ]
+    coordinators = domain_data.get(DATA_COORDINATORS, {})
     if not coordinators:
         raise web.HTTPServiceUnavailable(reason="GpsTrack integration is not configured.")
-    return coordinators[0]
+    return next(iter(coordinators.values()))

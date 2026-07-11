@@ -10,6 +10,7 @@ from .const import (
     PANEL_MEMBER_API,
     PANEL_FRONTEND_URL_PATH,
     PANEL_ICON,
+    PANEL_MODULE_STATIC_URL,
     PANEL_MODULE_URL,
     PANEL_SUMMARY_API,
     PANEL_STATIC_PATH,
@@ -22,7 +23,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
-                PANEL_MODULE_URL,
+                PANEL_MODULE_STATIC_URL,
                 str(Path(__file__).parent / PANEL_STATIC_PATH),
                 cache_headers=False,
             )
