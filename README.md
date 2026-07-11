@@ -6,15 +6,67 @@ This branch is the Home Assistant-focused fork of the project. The Android app w
 
 ## Repository layout
 
+- `custom_components/gpstrack/`: Home Assistant custom integration intended for HACS delivery
 - `backend/`: FastAPI service, normalized domain models, Home Assistant provider, and tests
 - `docs/`: architecture notes and branch roadmap
 - `docker-compose.yml`: local API + PostGIS runtime
 
-## Principles
+## Architecture
 
-- Home Assistant is the live event source.
-- This service owns normalized history, derived trips, stop summaries, places, and safety events.
-- The next product surface should be Home Assistant native: integration hooks, dashboard data, and HA-friendly UI delivery.
+This repo currently uses a sidecar model:
+
+- Home Assistant installs `custom_components/gpstrack/` through HACS or as a manual custom integration.
+- The backend still runs separately in Docker and is reached over HTTP by the integration.
+- Home Assistant is the live event source; the backend owns normalized history, places, trips, stops, and safety derivation.
+
+If you prefer HACS, this is the right direction. HACS distributes the integration only. It does not run the backend container for you.
+
+## HACS status
+
+The repo now has the root `hacs.json` expected by HACS custom repositories.
+
+Remaining HACS packaging constraints:
+
+- The repository must be public on GitHub for HACS to install it.
+- The integration metadata URLs in `custom_components/gpstrack/manifest.json` should be updated to real public HTTPS documentation and issue tracker links once the public repo location is decided.
+- If you want to pursue HACS default-store inclusion later, add brand assets, HACS validation, Hassfest, and GitHub releases.
+
+HACS references:
+
+- https://www.hacs.xyz/docs/publish/start/
+- https://www.hacs.xyz/docs/publish/integration/
+
+## Installation model
+
+### 1. Run the backend
+
+Start the API, database, migrations, and ingestion worker:
+
+```bash
+docker compose up --build
+```
+
+The API will be available at `http://localhost:${GPSTRACK_API_PORT:-8000}` by default.
+
+### 2. Install the Home Assistant integration
+
+Once the repo is on public GitHub, add it to HACS as a custom repository of type `Integration`, then install `GpsTrack`.
+
+Current integration behavior:
+
+- config entry asks for backend base URL
+- optional access token
+- configurable polling interval
+- creates one tracker entity per tracked member
+- exposes battery, place, and last-seen sensors
+
+### 3. Connect Home Assistant to the backend
+
+In Home Assistant, configure the integration with the backend URL. The integration polls:
+
+- `/api/v1/home-assistant/summary`
+
+The backend remains the history engine; the custom integration is the Home Assistant-facing wrapper.
 
 ## Local development
 
@@ -43,19 +95,19 @@ pytest
 This branch currently provides:
 
 - FastAPI routes for health, members, member history/timeline/stops/trips/safety, and places
+- a Home Assistant summary endpoint for integration polling
 - Alembic-backed schema migration flow
 - SQLAlchemy/PostGIS domain model for family location history
 - Home Assistant snapshot + websocket ingestion with auto-discovered trackers
-- Reverse geocoded places plus safe-zone-derived events
-- Derived trips, trip routes, stop summaries, and daily summaries
-- Docker Compose runtime for local development
+- reverse geocoded places plus safe-zone-derived events
+- derived trips, trip routes, stop summaries, and daily summaries
+- a Home Assistant custom integration scaffold with config flow, coordinator, tracker, and sensors
 
 Not implemented yet:
 
-- Home Assistant custom integration packaging and config flow
 - Home Assistant dashboard or panel UI
 - Home Assistant-native auth, ingress, or session handling
-- Production packaging choices for long-running ingestion plus durable storage
+- production packaging choice if you want Home Assistant to also manage backend runtime
 
 ## Home Assistant ingestion
 
@@ -65,12 +117,6 @@ Optional overrides:
 
 - `GPSTRACK_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can pre-seed member metadata such as child/parent classification.
 - Discovered devices can be hidden later through the member device ignore API instead of removing them from config.
-
-Run the stack with:
-
-```bash
-docker compose up --build
-```
 
 ## Database lifecycle
 
