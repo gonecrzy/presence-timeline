@@ -36,6 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault(DATA_COORDINATORS, {})
+    hass.data[DOMAIN][entry.entry_id] = coordinator
     hass.data[DOMAIN][DATA_COORDINATORS][entry.entry_id] = coordinator
     await _async_ensure_panel_registered(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -47,6 +48,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         coordinators = hass.data[DOMAIN].get(DATA_COORDINATORS, {})
         coordinators.pop(entry.entry_id, None)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
         if not coordinators and hass.data[DOMAIN].get(DATA_PANEL_REGISTERED):
             async_unregister_panel(hass)
             hass.data[DOMAIN].pop(DATA_PANEL_REGISTERED, None)

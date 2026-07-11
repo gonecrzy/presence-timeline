@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     search_geocode_url: str = "https://nominatim.openstreetmap.org/search"
     reverse_geocode_user_agent: str = "gpstrack/0.1.0"
     reverse_geocode_timeout_seconds: float = 5.0
+    reverse_geocode_cache_precision: int = 4
+    reverse_geocode_retry_minutes: int = 15
+    reverse_geocode_batch_size: int = 10
+    reverse_geocode_backfill_limit: int = 500
+    reverse_geocode_worker_interval_seconds: int = 60
 
     model_config = SettingsConfigDict(
         env_prefix="GPSTRACK_",

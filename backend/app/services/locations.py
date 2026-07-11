@@ -4,6 +4,7 @@ from uuid import UUID
 from app.domain.events import NormalizedLocationEvent
 from app.models.location import LocationPoint
 from app.repositories.location_repository import LocationRepository
+from app.services.reverse_geocode_cache import ReverseGeocodeCacheService
 
 
 class LocationService:
@@ -12,10 +13,12 @@ class LocationService:
         repository: LocationRepository,
         auto_discovery_family_slug: str | None = None,
         auto_discovery_family_name: str | None = None,
+        reverse_geocode_cache: ReverseGeocodeCacheService | None = None,
     ) -> None:
         self.repository = repository
         self.auto_discovery_family_slug = auto_discovery_family_slug
         self.auto_discovery_family_name = auto_discovery_family_name
+        self.reverse_geocode_cache = reverse_geocode_cache or ReverseGeocodeCacheService(repository)
 
     def ingest(
         self,
@@ -64,6 +67,8 @@ class LocationService:
             is_charging=event.is_charging,
         )
         stored = self.repository.add_location_point(point)
+        if self.reverse_geocode_cache is not None:
+            self.reverse_geocode_cache.queue_lookup(event.latitude, event.longitude)
         if hasattr(self.repository, "commit"):
             self.repository.commit()
         return stored

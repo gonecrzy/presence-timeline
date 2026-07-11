@@ -171,6 +171,16 @@ class FakeReverseGeocoder:
         return "500 Elm St, Springfield"
 
 
+class FakeReverseGeocodeCache:
+    def __init__(self, labels: dict[tuple[float, float, str], str] | None = None) -> None:
+        self.labels = labels or {}
+        self.calls = []
+
+    def lookup_label(self, latitude: float, longitude: float, *, granularity: str) -> str | None:
+        self.calls.append((latitude, longitude, granularity))
+        return self.labels.get((latitude, longitude, granularity))
+
+
 def test_member_view_service_updates_member_profile(monkeypatch) -> None:
     repository = FakeMemberRepository()
     monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
@@ -231,7 +241,7 @@ def test_member_view_service_lists_members_with_place_aware_current_location_lab
     assert members[0]["current_location_label"] == "School"
 
 
-def test_member_view_service_lists_members_with_block_label_when_place_missing(monkeypatch) -> None:
+def test_member_view_service_lists_members_with_cached_block_label_when_place_missing(monkeypatch) -> None:
     repository = FakeMemberRepository()
     repository.places = []
     repository.points = [
@@ -266,18 +276,17 @@ def test_member_view_service_lists_members_with_block_label_when_place_missing(m
     monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
 
     service = MemberViewService(db=None)
-    service.reverse_geocoder = SimpleNamespace(
-        reverse=lambda latitude, longitude, granularity="full": {
-            "full": "129 Sundance Court, Sangaree, South Carolina 29486",
-            "block": "100 block of Sundance Court, Sangaree",
-            "street": "Sundance Court, Sangaree",
-            "locality": "Sangaree",
-        }[granularity],
+    reverse_geocode_cache = FakeReverseGeocodeCache(
+        labels={
+            (37.4301, -122.0901, "block"): "100 block of Sundance Court, Sangaree",
+        }
     )
+    service.reverse_geocode_cache = reverse_geocode_cache
 
     members = service.list_members("family-alpha")
 
     assert members[0]["current_location_label"] == "100 block of Sundance Court, Sangaree"
+    assert reverse_geocode_cache.calls == [(37.4301, -122.0901, "block")]
 
 
 def test_member_view_service_updates_device_metadata(monkeypatch) -> None:
@@ -395,7 +404,7 @@ def test_member_view_service_condenses_nearby_points_into_location_stay(monkeypa
     assert items[0]["point_count"] == 3
 
 
-def test_member_view_service_derives_stops_with_place_first_then_reverse_geocode(monkeypatch) -> None:
+def test_member_view_service_derives_stops_with_place_first_then_cached_label(monkeypatch) -> None:
     repository = FakeMemberRepository()
     repository.points = [
         SimpleNamespace(
@@ -456,8 +465,12 @@ def test_member_view_service_derives_stops_with_place_first_then_reverse_geocode
     monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
 
     service = MemberViewService(db=None)
-    reverse_geocoder = FakeReverseGeocoder()
-    service.reverse_geocoder = reverse_geocoder
+    reverse_geocode_cache = FakeReverseGeocodeCache(
+        labels={
+            (37.4305, -122.09, "full"): "500 Elm St, Springfield",
+        }
+    )
+    service.reverse_geocode_cache = reverse_geocode_cache
 
     stops = service.stops(
         repository.member.id,
@@ -476,10 +489,10 @@ def test_member_view_service_derives_stops_with_place_first_then_reverse_geocode
     assert stops[1]["address"] == "500 Elm St, Springfield"
     assert stops[1]["label"] == "500 Elm St, Springfield"
     assert stops[1]["duration_seconds"] == 12 * 60
-    assert reverse_geocoder.calls == [(stops[1]["latitude"], stops[1]["longitude"])]
+    assert reverse_geocode_cache.calls == [(stops[1]["latitude"], stops[1]["longitude"], "full")]
 
 
-def test_member_view_service_uses_representative_stop_point_for_reverse_geocode(monkeypatch) -> None:
+def test_member_view_service_uses_representative_stop_point_for_cached_label(monkeypatch) -> None:
     repository = FakeMemberRepository()
     repository.places = []
     repository.points = [
@@ -514,8 +527,12 @@ def test_member_view_service_uses_representative_stop_point_for_reverse_geocode(
     monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
 
     service = MemberViewService(db=None)
-    reverse_geocoder = FakeReverseGeocoder()
-    service.reverse_geocoder = reverse_geocoder
+    reverse_geocode_cache = FakeReverseGeocodeCache(
+        labels={
+            (37.4301, -122.0901, "full"): "500 Elm St, Springfield",
+        }
+    )
+    service.reverse_geocode_cache = reverse_geocode_cache
 
     stops = service.stops(
         repository.member.id,
@@ -526,6 +543,6 @@ def test_member_view_service_uses_representative_stop_point_for_reverse_geocode(
     )
 
     assert len(stops) == 1
-    assert reverse_geocoder.calls == [(37.4301, -122.0901)]
+    assert reverse_geocode_cache.calls == [(37.4301, -122.0901, "full")]
     assert stops[0]["latitude"] == 37.4301
     assert stops[0]["longitude"] == -122.0901

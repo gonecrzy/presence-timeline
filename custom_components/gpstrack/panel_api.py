@@ -46,5 +46,11 @@ def _get_primary_coordinator(request: web.Request):
     domain_data = hass.data.get(DOMAIN, {})
     coordinators = domain_data.get(DATA_COORDINATORS, {})
     if not coordinators:
+        coordinators = {
+            key: value
+            for key, value in domain_data.items()
+            if key not in (DATA_COORDINATORS, DOMAIN) and hasattr(value, "api")
+        }
+    if not coordinators:
         raise web.HTTPServiceUnavailable(reason="GpsTrack integration is not configured.")
     return next(iter(coordinators.values()))

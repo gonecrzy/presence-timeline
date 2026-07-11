@@ -36,7 +36,7 @@ class ReverseGeocoder:
             settings.reverse_geocode_timeout_seconds if timeout_seconds is None else timeout_seconds
         )
 
-    def reverse(self, latitude: float, longitude: float, *, granularity: str = "full") -> str | None:
+    def reverse_payload(self, latitude: float, longitude: float) -> dict | None:
         if not self.enabled:
             return None
 
@@ -59,7 +59,13 @@ class ReverseGeocoder:
         except httpx.HTTPError:
             return None
 
-        return format_reverse_geocode_label(response.json(), granularity=granularity)
+        return response.json()
+
+    def reverse(self, latitude: float, longitude: float, *, granularity: str = "full") -> str | None:
+        payload = self.reverse_payload(latitude, longitude)
+        if payload is None:
+            return None
+        return format_reverse_geocode_label(payload, granularity=granularity)
 
 
 class SearchGeocoder:

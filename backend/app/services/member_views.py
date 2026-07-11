@@ -2,7 +2,8 @@ from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from app.repositories.location_repository import LocationRepository
-from app.services.places import PlaceMatcher, ReverseGeocoder, choose_address_granularity
+from app.services.places import PlaceMatcher, choose_address_granularity
+from app.services.reverse_geocode_cache import ReverseGeocodeCacheService
 from app.services.safety import SafetyDerivationService
 from app.services.stops import derive_stops
 from app.services.trip_derivation import TripDerivationService
@@ -14,9 +15,9 @@ class MemberViewService:
         self.trip_derivation = TripDerivationService(self.repository)
         self.safety_derivation = SafetyDerivationService()
         self.place_matcher = PlaceMatcher()
-        self.reverse_geocoder = ReverseGeocoder()
+        self.reverse_geocode_cache = ReverseGeocodeCacheService(self.repository)
 
-    def list_members(self, family_slug: str) -> list[dict]:
+    def list_members(self, family_slug: str, *, resolve_addresses: bool = True) -> list[dict]:
         members = self.repository.list_members_for_family_slug(family_slug)
         return [
             {
@@ -24,7 +25,10 @@ class MemberViewService:
                 "display_name": member.display_name,
                 "is_child": member.is_child,
                 "last_seen_at": member.last_seen_at,
-                "current_location_label": self._current_location_label(member),
+                "current_location_label": self._current_location_label(
+                    member,
+                    resolve_addresses=resolve_addresses,
+                ),
                 "devices": [_serialize_device(device) for device in member.devices],
             }
             for member in members
@@ -97,6 +101,7 @@ class MemberViewService:
         *,
         dwell_radius_m: float = 250.0,
         minimum_duration: timedelta = timedelta(minutes=10),
+        resolve_addresses: bool = True,
     ) -> list[dict]:
         member = self.repository.get_member(member_id)
         if member is None:
@@ -108,12 +113,20 @@ class MemberViewService:
             points=points,
             places=places,
             place_matcher=self.place_matcher,
-            reverse_geocoder=self.reverse_geocoder,
+            reverse_geocode_cache=self.reverse_geocode_cache,
             dwell_radius_m=dwell_radius_m,
             minimum_duration=minimum_duration,
+            resolve_addresses=resolve_addresses,
         )
 
-    def timeline(self, member_id: UUID, start: datetime, end: datetime) -> list[dict]:
+    def timeline(
+        self,
+        member_id: UUID,
+        start: datetime,
+        end: datetime,
+        *,
+        resolve_addresses: bool = True,
+    ) -> list[dict]:
         member = self.repository.get_member(member_id)
         if member is None:
             return []
@@ -155,9 +168,10 @@ class MemberViewService:
             points=points,
             places=places,
             place_matcher=self.place_matcher,
-            reverse_geocoder=self.reverse_geocoder,
+            reverse_geocode_cache=self.reverse_geocode_cache,
             dwell_radius_m=250.0,
             minimum_duration=timedelta(minutes=10),
+            resolve_addresses=resolve_addresses,
         )
         for stop in stop_items:
             items.append(
@@ -207,7 +221,7 @@ class MemberViewService:
 
         return sorted(items, key=lambda item: item["observed_at"])
 
-    def _current_location_label(self, member) -> str | None:
+    def _current_location_label(self, member, *, resolve_addresses: bool = True) -> str | None:
         latest_point = self.repository.get_latest_point_for_member(member.id)
         if latest_point is None:
             return None
@@ -222,13 +236,17 @@ class MemberViewService:
             points=history,
             places=places,
             place_matcher=self.place_matcher,
-            reverse_geocoder=self.reverse_geocoder,
+            reverse_geocode_cache=self.reverse_geocode_cache,
             dwell_radius_m=250.0,
             minimum_duration=timedelta(minutes=10),
+            resolve_addresses=resolve_addresses,
         )
         current_stop = next((stop for stop in reversed(stop_items) if stop["is_current"]), None)
         if current_stop is not None:
             return current_stop["label"]
+
+        if not resolve_addresses:
+            return _coordinate_label(latest_point.latitude, latest_point.longitude)
 
         granularity = choose_address_granularity(
             accuracy_m=latest_point.accuracy_m,
@@ -236,11 +254,11 @@ class MemberViewService:
             point_count=None,
             moving=True,
         )
-        return self.reverse_geocoder.reverse(
+        return self.reverse_geocode_cache.lookup_label(
             latest_point.latitude,
             latest_point.longitude,
             granularity=granularity,
-        )
+        ) or _coordinate_label(latest_point.latitude, latest_point.longitude)
 
 
 def _serialize_point(point) -> dict:
@@ -295,9 +313,10 @@ def _build_stop_items(
     points,
     places: list[dict],
     place_matcher: PlaceMatcher,
-    reverse_geocoder: ReverseGeocoder,
+    reverse_geocode_cache: ReverseGeocodeCacheService,
     dwell_radius_m: float,
     minimum_duration: timedelta,
+    resolve_addresses: bool,
 ) -> list[dict]:
     derived_stops = derive_stops(
         points,
@@ -322,9 +341,14 @@ def _build_stop_items(
         )
         address = (
             None
-            if place_name is not None
-            else reverse_geocoder.reverse(stop.latitude, stop.longitude, granularity=granularity)
+            if place_name is not None or not resolve_addresses
+            else reverse_geocode_cache.lookup_label(
+                stop.latitude,
+                stop.longitude,
+                granularity=granularity,
+            )
         )
+        label = place_name or address or _coordinate_label(stop.latitude, stop.longitude)
         items.append(
             {
                 "started_at": stop.started_at,
@@ -336,12 +360,16 @@ def _build_stop_items(
                 "place_id": matched_place["id"] if matched_place is not None else None,
                 "place_name": place_name,
                 "address": address,
-                "label": place_name or address,
+                "label": label,
                 "is_current": index == len(derived_stops) - 1 and stop.ended_at == latest_observed_at,
             }
         )
 
     return items
+
+
+def _coordinate_label(latitude: float, longitude: float) -> str:
+    return f"{latitude:.4f}, {longitude:.4f}"
 
 
 def _dates_in_range(start_date: date, end_date: date) -> list[date]:

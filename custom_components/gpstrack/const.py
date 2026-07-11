@@ -1,5 +1,5 @@
 DOMAIN = "gpstrack"
-INTEGRATION_VERSION = "0.2.3"
+INTEGRATION_VERSION = "0.2.4"
 
 PLATFORMS = ("device_tracker", "sensor")
 

@@ -85,5 +85,25 @@ services:
       - ./backend:/app
     command: python -m app.workers.home_assistant
 
+  geocoder:
+    build:
+      context: ./backend
+    container_name: gpstrack-geocoder
+    environment:
+      GPSTRACK_DATABASE_URL: ${GPSTRACK_DATABASE_URL:-postgresql+psycopg://gpstrack:gpstrack@db:5432/gpstrack}
+      GPSTRACK_ENABLE_REVERSE_GEOCODING: ${GPSTRACK_ENABLE_REVERSE_GEOCODING:-true}
+      GPSTRACK_REVERSE_GEOCODE_BATCH_SIZE: ${GPSTRACK_REVERSE_GEOCODE_BATCH_SIZE:-10}
+      GPSTRACK_REVERSE_GEOCODE_BACKFILL_LIMIT: ${GPSTRACK_REVERSE_GEOCODE_BACKFILL_LIMIT:-500}
+      GPSTRACK_REVERSE_GEOCODE_WORKER_INTERVAL_SECONDS: ${GPSTRACK_REVERSE_GEOCODE_WORKER_INTERVAL_SECONDS:-60}
+      GPSTRACK_REVERSE_GEOCODE_RETRY_MINUTES: ${GPSTRACK_REVERSE_GEOCODE_RETRY_MINUTES:-15}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    volumes:
+      - ./backend:/app
+    command: python -u -m app.workers.reverse_geocoding
+
 volumes:
   postgis_data:

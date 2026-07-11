@@ -11,6 +11,7 @@ class FakeLocationRepository:
         self.members = {}
         self.devices = {}
         self.points = []
+        self.reverse_geocode_cache = {}
 
     def resolve_member_by_source_entity(self, source_entity_id: str):
         return self.members.get(source_entity_id)
@@ -72,11 +73,29 @@ class FakeLocationRepository:
             return None
         return sorted(matching, key=lambda item: item.observed_at, reverse=True)[0]
 
+    def enqueue_reverse_geocode_cache(self, latitude_rounded: float, longitude_rounded: float):
+        key = (latitude_rounded, longitude_rounded)
+        created = key not in self.reverse_geocode_cache
+        self.reverse_geocode_cache[key] = {
+            "latitude_rounded": latitude_rounded,
+            "longitude_rounded": longitude_rounded,
+        }
+        return self.reverse_geocode_cache[key], created
+
+
+class FakeReverseGeocodeCache:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def queue_lookup(self, latitude: float, longitude: float) -> None:
+        self.calls.append((latitude, longitude))
+
 
 def test_ingest_location_event_persists_point_for_known_member() -> None:
     repository = FakeLocationRepository()
     member_id = uuid4()
     repository.members["device_tracker.sam_phone"] = {"id": member_id, "display_name": "Sam"}
+    reverse_geocode_cache = FakeReverseGeocodeCache()
 
     event = NormalizedLocationEvent(
         provider=ProviderName.HOME_ASSISTANT,
@@ -90,13 +109,14 @@ def test_ingest_location_event_persists_point_for_known_member() -> None:
         raw_payload={"event": "x"},
     )
 
-    service = LocationService(repository)
+    service = LocationService(repository, reverse_geocode_cache=reverse_geocode_cache)
     stored = service.ingest(event, received_at=datetime(2026, 7, 8, 21, 0, 2, tzinfo=UTC))
 
     assert stored.member_id == member_id
     assert stored.provider == "home_assistant"
     assert stored.battery_level == 81
     assert repository.devices["device_tracker.sam_phone"]["label"] == "Sam Phone"
+    assert reverse_geocode_cache.calls == [(37.42, -122.08)]
 
 
 def test_ingest_location_event_ignores_unknown_member_mapping() -> None:

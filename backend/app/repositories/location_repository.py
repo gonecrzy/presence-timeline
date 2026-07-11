@@ -1,11 +1,11 @@
 from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.family import Device, Family, Member
-from app.models.location import DailySummary, LocationPoint, SafetyEvent
+from app.models.location import DailySummary, LocationPoint, ReverseGeocodeCache, SafetyEvent
 from app.models.place import Place
 from app.models.trip import Trip
 
@@ -343,6 +343,83 @@ class LocationRepository:
         self.db.flush()
         self.db.refresh(point)
         return point
+
+    def list_recent_location_points(self, limit: int) -> list[LocationPoint]:
+        stmt: Select[tuple[LocationPoint]] = (
+            select(LocationPoint)
+            .order_by(LocationPoint.observed_at.desc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(stmt))
+
+    def get_reverse_geocode_cache(
+        self,
+        latitude_rounded: float,
+        longitude_rounded: float,
+    ) -> ReverseGeocodeCache | None:
+        stmt: Select[tuple[ReverseGeocodeCache]] = (
+            select(ReverseGeocodeCache)
+            .where(ReverseGeocodeCache.latitude_rounded == latitude_rounded)
+            .where(ReverseGeocodeCache.longitude_rounded == longitude_rounded)
+        )
+        return self.db.scalar(stmt)
+
+    def enqueue_reverse_geocode_cache(
+        self,
+        latitude_rounded: float,
+        longitude_rounded: float,
+    ) -> tuple[ReverseGeocodeCache, bool]:
+        row = self.get_reverse_geocode_cache(latitude_rounded, longitude_rounded)
+        if row is not None:
+            return row, False
+
+        row = ReverseGeocodeCache(
+            latitude_rounded=latitude_rounded,
+            longitude_rounded=longitude_rounded,
+        )
+        self.db.add(row)
+        self.db.flush()
+        return row, True
+
+    def list_pending_reverse_geocode_cache(
+        self,
+        limit: int,
+        retry_before: datetime,
+    ) -> list[ReverseGeocodeCache]:
+        stmt: Select[tuple[ReverseGeocodeCache]] = (
+            select(ReverseGeocodeCache)
+            .where(ReverseGeocodeCache.payload.is_(None))
+            .where(
+                or_(
+                    ReverseGeocodeCache.last_attempted_at.is_(None),
+                    ReverseGeocodeCache.last_attempted_at <= retry_before,
+                )
+            )
+            .order_by(ReverseGeocodeCache.created_at.asc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(stmt))
+
+    def mark_reverse_geocode_cache_resolved(
+        self,
+        row: ReverseGeocodeCache,
+        payload: dict,
+        resolved_at: datetime,
+    ) -> None:
+        row.payload = payload
+        row.resolved_at = resolved_at
+        row.last_attempted_at = resolved_at
+        row.failure_count = 0
+        self.db.flush()
+
+    def mark_reverse_geocode_cache_failed(
+        self,
+        row: ReverseGeocodeCache,
+        attempted_at: datetime,
+    ) -> None:
+        row.last_attempted_at = attempted_at
+        row.failure_count += 1
+        self.db.flush()
 
     def get_latest_point_for_member(self, member_id: UUID) -> LocationPoint | None:
         stmt: Select[tuple[LocationPoint]] = (

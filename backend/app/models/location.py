@@ -2,7 +2,7 @@ from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from geoalchemy2 import Geometry
-from sqlalchemy import JSON, BigInteger, Date, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, BigInteger, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,6 +75,25 @@ class SafetyEvent(TimestampMixin, Base):
     payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     place: Mapped["Place | None"] = relationship(back_populates="safety_events")
+
+
+class ReverseGeocodeCache(TimestampMixin, Base):
+    __tablename__ = "reverse_geocode_cache"
+    __table_args__ = (
+        UniqueConstraint(
+            "latitude_rounded",
+            "longitude_rounded",
+            name="uq_reverse_geocode_cache_latitude_longitude",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    latitude_rounded: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude_rounded: Mapped[float] = mapped_column(Float, nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 from app.models.family import Device, Member  # noqa: E402

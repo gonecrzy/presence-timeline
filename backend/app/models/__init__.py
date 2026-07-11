@@ -1,6 +1,6 @@
 from app.models.base import Base
 from app.models.family import Device, Family, Member
-from app.models.location import DailySummary, LocationPoint, SafetyEvent
+from app.models.location import DailySummary, LocationPoint, ReverseGeocodeCache, SafetyEvent
 from app.models.place import Place
 from app.models.trip import Trip
 
@@ -12,6 +12,7 @@ __all__ = [
     "LocationPoint",
     "Member",
     "Place",
+    "ReverseGeocodeCache",
     "SafetyEvent",
     "Trip",
 ]

@@ -9,7 +9,7 @@ This branch is the Home Assistant-focused fork of the project. The Android app w
 - `custom_components/gpstrack/`: Home Assistant custom integration intended for HACS delivery
 - `backend/`: FastAPI service, normalized domain models, Home Assistant provider, and tests
 - `docs/`: architecture notes and branch roadmap
-- `docker-compose.yml`: local API + PostGIS runtime
+- `docker-compose.yml`: local API + PostGIS runtime plus background workers
 
 ## Architecture
 
@@ -18,6 +18,7 @@ This repo currently uses a sidecar model:
 - Home Assistant installs `custom_components/gpstrack/` through HACS or as a manual custom integration.
 - The backend still runs separately in Docker and is reached over HTTP by the integration.
 - Home Assistant is the live event source; the backend owns normalized history, places, trips, stops, and safety derivation.
+- Reverse geocoding is cache-backed and resolved by a background worker, not by live API reads.
 
 If you prefer HACS, this is the right direction. HACS distributes the integration only. It does not run the backend container for you.
 
@@ -39,7 +40,7 @@ HACS references:
 
 ### 1. Run the backend
 
-Start the API, database, migrations, and ingestion worker:
+Start the API, database, migrations, and background workers:
 
 ```bash
 docker compose up --build
@@ -58,6 +59,7 @@ Current integration behavior:
 - configurable polling interval
 - creates one tracker entity per tracked member
 - exposes battery, place, and last-seen sensors
+- uses cached labels and falls back to coordinates while enrichment is pending
 
 ### 3. Connect Home Assistant to the backend
 
@@ -70,7 +72,7 @@ The backend remains the history engine; the custom integration is the Home Assis
 ## Local development
 
 1. Copy `.env.example` to `.env` if you want to override defaults.
-2. Start PostGIS, run migrations, and boot the API:
+2. Start PostGIS, run migrations, and boot the API plus workers:
 
 ```bash
 docker compose up --build
@@ -98,6 +100,7 @@ This branch currently provides:
 - Alembic-backed schema migration flow
 - SQLAlchemy/PostGIS domain model for family location history
 - Home Assistant snapshot + websocket ingestion with auto-discovered trackers
+- background reverse-geocode cache enrichment for request-time labels
 - reverse geocoded places plus safe-zone-derived events
 - derived trips, trip routes, stop summaries, and daily summaries
 - a Home Assistant custom integration scaffold with config flow, coordinator, tracker, and sensors
@@ -111,6 +114,12 @@ Not implemented yet:
 ## Home Assistant ingestion
 
 For live ingestion, enable the worker and provide a Home Assistant websocket URL plus long-lived access token. On startup the worker imports current coordinate-bearing `device_tracker.*` states from `/api/states`, then stays subscribed to websocket `state_changed` events.
+
+Reverse geocoding runs separately from API reads:
+
+- ingestion queues rounded coordinates into a cache table
+- the `geocoder` worker backfills recent points and resolves pending cache entries
+- API routes use `saved place -> cached geocode -> coordinate fallback`
 
 Optional overrides:
 
@@ -129,6 +138,7 @@ cd backend
 alembic upgrade head
 python -m app.workers.retention
 python -m app.workers.home_assistant
+python -m app.workers.reverse_geocoding
 ```
 
 ## Next-step planning

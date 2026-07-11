@@ -58,7 +58,7 @@ class GpsTrackPanel extends HTMLElement {
         this._render();
       }
     } catch (err) {
-      this._error = err?.message || String(err);
+      this._error = this._normalizeError(err);
     } finally {
       this._loading = false;
       this._render();
@@ -80,7 +80,7 @@ class GpsTrackPanel extends HTMLElement {
       const path = this._memberApiPath(memberId, startIso, endIso);
       this._memberPanel = await this._apiGet(path);
     } catch (err) {
-      this._error = err?.message || String(err);
+      this._error = this._normalizeError(err);
     } finally {
       this._loading = false;
       this._render();
@@ -570,6 +570,23 @@ class GpsTrackPanel extends HTMLElement {
       hour: "numeric",
       minute: "2-digit",
     });
+  }
+
+  _normalizeError(err) {
+    if (!err) {
+      return "Unknown GpsTrack error";
+    }
+    if (typeof err === "string") {
+      return err;
+    }
+    if (typeof err.message === "string" && err.message) {
+      return err.message;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch (_jsonError) {
+      return String(err);
+    }
   }
 
   _escape(value) {
