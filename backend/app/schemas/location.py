@@ -29,6 +29,7 @@ class StopResponse(BaseModel):
     place_name: str | None = None
     address: str | None = None
     label: str | None = None
+    is_current: bool | None = None
 
 
 class StopListResponse(BaseModel):

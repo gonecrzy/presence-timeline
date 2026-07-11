@@ -28,7 +28,6 @@ The repo now has the root `hacs.json` expected by HACS custom repositories.
 Remaining HACS packaging constraints:
 
 - The repository must be public on GitHub for HACS to install it.
-- The integration metadata URLs in `custom_components/gpstrack/manifest.json` should be updated to real public HTTPS documentation and issue tracker links once the public repo location is decided.
 - If you want to pursue HACS default-store inclusion later, add brand assets, HACS validation, Hassfest, and GitHub releases.
 
 HACS references:

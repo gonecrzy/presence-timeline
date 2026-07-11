@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import urlencode
 
 from aiohttp import ClientSession, ContentTypeError
 from homeassistant.util import dt as dt_util
@@ -24,6 +25,8 @@ class MemberSnapshot:
     is_child: bool
     last_seen_at: datetime | None
     current_location_label: str | None
+    status: str
+    status_detail: str | None
     latitude: float | None
     longitude: float | None
     accuracy_m: float | None
@@ -41,13 +44,28 @@ class GpsTrackApiClient:
     async def async_validate_connection(self) -> None:
         await self.async_get_summary()
 
+    async def async_get_summary_payload(self) -> dict:
+        return await self._async_get_json("/api/v1/home-assistant/summary")
+
     async def async_get_summary(self) -> dict[str, MemberSnapshot]:
-        payload = await self._async_get_json("/api/v1/home-assistant/summary")
+        payload = await self.async_get_summary_payload()
         items = payload.get("items", [])
         return {
             snapshot.member_id: snapshot
             for snapshot in (self._parse_member(item) for item in items)
         }
+
+    async def async_get_member_panel(
+        self,
+        member_id: str,
+        *,
+        start: str,
+        end: str,
+    ) -> dict:
+        query = urlencode({"start": start, "end": end})
+        return await self._async_get_json(
+            f"/api/v1/home-assistant/members/{member_id}/panel?{query}"
+        )
 
     async def _async_get_json(self, path: str) -> dict:
         headers = {}
@@ -76,6 +94,8 @@ class GpsTrackApiClient:
             is_child=item["is_child"],
             last_seen_at=_parse_datetime(item.get("last_seen_at")),
             current_location_label=item.get("current_location_label"),
+            status=item.get("status", "unknown"),
+            status_detail=item.get("status_detail"),
             latitude=item.get("latitude"),
             longitude=item.get("longitude"),
             accuracy_m=item.get("accuracy_m"),
