@@ -28,13 +28,19 @@ class ReverseGeocodeCacheService:
         )
 
     def lookup_label(self, latitude: float, longitude: float, *, granularity: str) -> str | None:
+        payload = self.lookup_payload(latitude, longitude)
+        if payload is None:
+            return None
+        return format_reverse_geocode_label(payload, granularity=granularity) or payload.get(
+            "display_name"
+        )
+
+    def lookup_payload(self, latitude: float, longitude: float) -> dict | None:
         latitude_rounded, longitude_rounded = self._rounded_coordinates(latitude, longitude)
         row = self.repository.get_reverse_geocode_cache(latitude_rounded, longitude_rounded)
         if row is None or row.payload is None:
             return None
-        return format_reverse_geocode_label(row.payload, granularity=granularity) or row.payload.get(
-            "display_name"
-        )
+        return row.payload
 
     def queue_lookup(self, latitude: float, longitude: float) -> bool:
         latitude_rounded, longitude_rounded = self._rounded_coordinates(latitude, longitude)

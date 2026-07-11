@@ -16,7 +16,7 @@ class HomeAssistantViewService:
 
     def summary(self, family_slug: str) -> list[dict]:
         items = []
-        for member in self.member_views.list_members(family_slug, resolve_addresses=False):
+        for member in self.member_views.list_members(family_slug, resolve_addresses=True):
             latest_point = self.member_views.latest_location(member["id"])
             current_stop = self._current_stop(member["id"], latest_point)
             status = STATUS_UNKNOWN
@@ -66,13 +66,13 @@ class HomeAssistantViewService:
                 member_id,
                 start,
                 end,
-                resolve_addresses=False,
+                resolve_addresses=True,
             ),
             "stops": self.member_views.stops(
                 member_id,
                 start,
                 end,
-                resolve_addresses=False,
+                resolve_addresses=True,
             ),
         }
 
@@ -84,6 +84,6 @@ class HomeAssistantViewService:
             member_id,
             latest_point["observed_at"] - STATUS_WINDOW,
             latest_point["observed_at"],
-            resolve_addresses=False,
+            resolve_addresses=True,
         )
         return next((stop for stop in reversed(stops) if stop.get("is_current")), None)

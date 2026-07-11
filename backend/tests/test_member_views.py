@@ -1,6 +1,8 @@
-from types import SimpleNamespace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
+
+import pytest
 
 from app.services.member_views import MemberViewService
 
@@ -172,13 +174,27 @@ class FakeReverseGeocoder:
 
 
 class FakeReverseGeocodeCache:
-    def __init__(self, labels: dict[tuple[float, float, str], str] | None = None) -> None:
+    def __init__(
+        self,
+        labels: dict[tuple[float, float, str], str] | None = None,
+        payloads: dict[tuple[float, float], dict] | None = None,
+    ) -> None:
         self.labels = labels or {}
+        self.payloads = payloads or {}
         self.calls = []
+        self.queued = []
 
     def lookup_label(self, latitude: float, longitude: float, *, granularity: str) -> str | None:
-        self.calls.append((latitude, longitude, granularity))
-        return self.labels.get((latitude, longitude, granularity))
+        rounded = (round(latitude, 4), round(longitude, 4), granularity)
+        self.calls.append(rounded)
+        return self.labels.get(rounded)
+
+    def lookup_payload(self, latitude: float, longitude: float) -> dict | None:
+        return self.payloads.get((round(latitude, 4), round(longitude, 4)))
+
+    def queue_lookup(self, latitude: float, longitude: float) -> bool:
+        self.queued.append((round(latitude, 4), round(longitude, 4)))
+        return True
 
 
 def test_member_view_service_updates_member_profile(monkeypatch) -> None:
@@ -489,10 +505,12 @@ def test_member_view_service_derives_stops_with_place_first_then_cached_label(mo
     assert stops[1]["address"] == "500 Elm St, Springfield"
     assert stops[1]["label"] == "500 Elm St, Springfield"
     assert stops[1]["duration_seconds"] == 12 * 60
-    assert reverse_geocode_cache.calls == [(stops[1]["latitude"], stops[1]["longitude"], "full")]
+    assert reverse_geocode_cache.calls == [
+        (round(stops[1]["latitude"], 4), round(stops[1]["longitude"], 4), "full")
+    ]
 
 
-def test_member_view_service_uses_representative_stop_point_for_cached_label(monkeypatch) -> None:
+def test_member_view_service_uses_averaged_stop_point_for_cached_label(monkeypatch) -> None:
     repository = FakeMemberRepository()
     repository.places = []
     repository.points = [
@@ -508,17 +526,17 @@ def test_member_view_service_uses_representative_stop_point_for_cached_label(mon
         SimpleNamespace(
             member_id=repository.member.id,
             observed_at=datetime(2026, 7, 8, 20, 6, tzinfo=UTC),
-            latitude=37.4310,
-            longitude=-122.0910,
-            accuracy_m=90.0,
+            latitude=37.4303,
+            longitude=-122.0903,
+            accuracy_m=12.0,
             battery_level=81,
             source_entity_id="device_tracker.sam_phone",
         ),
         SimpleNamespace(
             member_id=repository.member.id,
             observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
-            latitude=37.4301,
-            longitude=-122.0901,
+            latitude=37.4306,
+            longitude=-122.0906,
             accuracy_m=10.0,
             battery_level=80,
             source_entity_id="device_tracker.sam_phone",
@@ -529,7 +547,7 @@ def test_member_view_service_uses_representative_stop_point_for_cached_label(mon
     service = MemberViewService(db=None)
     reverse_geocode_cache = FakeReverseGeocodeCache(
         labels={
-            (37.4301, -122.0901, "full"): "500 Elm St, Springfield",
+            (37.4303, -122.0903, "full"): "500 Elm St, Springfield",
         }
     )
     service.reverse_geocode_cache = reverse_geocode_cache
@@ -543,6 +561,73 @@ def test_member_view_service_uses_representative_stop_point_for_cached_label(mon
     )
 
     assert len(stops) == 1
-    assert reverse_geocode_cache.calls == [(37.4301, -122.0901, "full")]
-    assert stops[0]["latitude"] == 37.4301
-    assert stops[0]["longitude"] == -122.0901
+    assert reverse_geocode_cache.calls == [(37.4303, -122.0903, "full")]
+    assert stops[0]["latitude"] == pytest.approx(37.4303)
+    assert stops[0]["longitude"] == pytest.approx(-122.0903)
+
+
+def test_member_view_service_prefers_business_name_and_keeps_exact_address(monkeypatch) -> None:
+    repository = FakeMemberRepository()
+    repository.places = []
+    repository.points = [
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+            latitude=37.4300,
+            longitude=-122.0900,
+            accuracy_m=8.0,
+            battery_level=82,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 6, tzinfo=UTC),
+            latitude=37.4303,
+            longitude=-122.0903,
+            accuracy_m=7.0,
+            battery_level=81,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+        SimpleNamespace(
+            member_id=repository.member.id,
+            observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            latitude=37.4306,
+            longitude=-122.0906,
+            accuracy_m=6.0,
+            battery_level=80,
+            source_entity_id="device_tracker.sam_phone",
+        ),
+    ]
+    monkeypatch.setattr("app.services.member_views.LocationRepository", lambda db: repository)
+
+    service = MemberViewService(db=None)
+    reverse_geocode_cache = FakeReverseGeocodeCache(
+        payloads={
+            (37.4303, -122.0903): {
+                "name": "Target",
+                "display_name": "Target, 129, Sundance Court, Sangaree, Berkeley County, South Carolina, 29486, United States",
+                "address": {
+                    "shop": "Target",
+                    "house_number": "129",
+                    "road": "Sundance Court",
+                    "suburb": "Sangaree",
+                    "state": "South Carolina",
+                    "postcode": "29486",
+                },
+            }
+        }
+    )
+    service.reverse_geocode_cache = reverse_geocode_cache
+
+    stops = service.stops(
+        repository.member.id,
+        datetime(2026, 7, 8, 20, 0, tzinfo=UTC),
+        datetime(2026, 7, 8, 22, 0, tzinfo=UTC),
+        dwell_radius_m=250.0,
+        minimum_duration=timedelta(minutes=10),
+    )
+
+    assert len(stops) == 1
+    assert stops[0]["place_name"] == "Target"
+    assert stops[0]["address"] == "129 Sundance Court, Sangaree, South Carolina 29486"
+    assert stops[0]["label"] == "Target"

@@ -1,6 +1,9 @@
 const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
 const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
 const DEFAULT_HISTORY_HOURS = 24;
+const STATIC_ROOT = "/api/presence-timeline/static";
+const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
+const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -13,6 +16,9 @@ class PresenceTimelinePanel extends HTMLElement {
     this._memberPanel = null;
     this._loading = false;
     this._error = null;
+    this._map = null;
+    this._leafletPromise = null;
+    this._mapRenderId = 0;
   }
 
   set hass(hass) {
@@ -28,6 +34,10 @@ class PresenceTimelinePanel extends HTMLElement {
 
   connectedCallback() {
     this._render();
+  }
+
+  disconnectedCallback() {
+    this._destroyMap();
   }
 
   async _ensureLoaded() {
@@ -137,6 +147,7 @@ class PresenceTimelinePanel extends HTMLElement {
     const historyTrips = (this._memberPanel?.timeline ?? []).filter((item) => item.kind === "trip");
 
     this.shadowRoot.innerHTML = `
+      <link rel="stylesheet" href="${LEAFLET_CSS_URL}?v=0.3.1">
       <style>
         :host {
           display: block;
@@ -256,27 +267,45 @@ class PresenceTimelinePanel extends HTMLElement {
           min-height: 520px;
           border-radius: 18px;
           overflow: hidden;
-          background:
-            linear-gradient(0deg, rgba(34, 197, 94, 0.07), rgba(34, 197, 94, 0.07)),
-            repeating-linear-gradient(0deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 1px, transparent 1px, transparent 56px),
-            repeating-linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 1px, transparent 1px, transparent 56px),
-            linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
+          background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
         }
-        svg {
-          width: 100%;
-          height: 100%;
-          display: block;
+        .leaflet-map {
+          position: absolute;
+          inset: 0;
         }
         .map-note {
           position: absolute;
           left: 14px;
           bottom: 14px;
+          z-index: 500;
           padding: 6px 10px;
           border-radius: 999px;
           background: rgba(15, 23, 42, 0.72);
           color: rgba(255,255,255,0.82);
           font-size: 12px;
           letter-spacing: 0.03em;
+          pointer-events: none;
+        }
+        .leaflet-container {
+          font: inherit;
+          background: #0f172a;
+        }
+        .leaflet-popup-content-wrapper,
+        .leaflet-popup-tip {
+          background: rgba(15, 23, 42, 0.96);
+          color: #e2e8f0;
+        }
+        .leaflet-popup-content {
+          margin: 12px 14px;
+          line-height: 1.45;
+        }
+        .popup-title {
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+        .popup-line {
+          color: rgba(226, 232, 240, 0.86);
+          font-size: 13px;
         }
         .detail-card {
           padding: 16px;
@@ -328,9 +357,12 @@ class PresenceTimelinePanel extends HTMLElement {
           font-weight: 600;
           margin-bottom: 4px;
         }
-        .item-meta {
+        .item-meta, .item-submeta {
           color: var(--secondary-text-color);
           font-size: 13px;
+        }
+        .item-submeta {
+          margin-top: 4px;
         }
         .empty, .error {
           padding: 18px;
@@ -373,7 +405,7 @@ class PresenceTimelinePanel extends HTMLElement {
               </div>
               <div class="subtitle">${mapModel.markerCount} member${mapModel.markerCount === 1 ? "" : "s"}</div>
             </div>
-            ${mapModel.markerCount ? this._mapTemplate(mapModel) : '<div class="empty">No location data is available yet.</div>'}
+            ${mapModel.markerCount ? this._mapTemplate() : '<div class="empty">No location data is available yet.</div>'}
           </div>
           <div class="card detail-card">
             ${selectedMember ? `
@@ -424,6 +456,13 @@ class PresenceTimelinePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".badge").forEach((button) => {
       button.addEventListener("click", () => this._loadMemberPanel(button.dataset.memberId));
     });
+
+    this._renderMap(mapModel).catch((err) => {
+      if (!this._error) {
+        this._error = this._normalizeError(err);
+        this._render();
+      }
+    });
   }
 
   _badgeTemplate(member) {
@@ -439,25 +478,11 @@ class PresenceTimelinePanel extends HTMLElement {
     `;
   }
 
-  _mapTemplate(mapModel) {
-    const polyline = mapModel.historyPoints.length
-      ? `<polyline fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${mapModel.historyPoints.map((point) => `${point.x},${point.y}`).join(" ")}"></polyline>`
-      : "";
-
-    const markers = mapModel.markers.map((marker) => `
-      <g>
-        <circle cx="${marker.x}" cy="${marker.y}" r="${marker.selected ? 11 : 8}" fill="${marker.selected ? "#f97316" : "#38bdf8"}" stroke="rgba(255,255,255,0.92)" stroke-width="2"></circle>
-        <text x="${marker.x + 14}" y="${marker.y - 14}" fill="rgba(255,255,255,0.95)" font-size="14" font-weight="700">${this._escape(marker.label)}</text>
-      </g>
-    `).join("");
-
+  _mapTemplate() {
     return `
       <div class="map-stage">
-        <svg viewBox="0 0 1000 640" role="img" aria-label="Presence Timeline family map">
-          ${polyline}
-          ${markers}
-        </svg>
-        <div class="map-note">Status badges use the backend stop rule: 10 minutes within 250 meters.</div>
+        <div id="leaflet-map" class="leaflet-map" role="img" aria-label="Presence Timeline family map"></div>
+        <div class="map-note">OpenStreetMap tiles. Click members and stops for detail.</div>
       </div>
     `;
   }
@@ -465,10 +490,12 @@ class PresenceTimelinePanel extends HTMLElement {
   _stopTemplate(stop) {
     const title = stop.label || "Unnamed stop";
     const durationMinutes = Math.round((stop.duration_seconds || 0) / 60);
+    const address = stop.address && stop.address !== stop.label ? `<div class="item-submeta">${this._escape(stop.address)}</div>` : "";
     return `
       <div class="item">
         <div class="item-title">${this._escape(title)}${stop.is_current ? " · Current" : ""}</div>
         <div class="item-meta">${durationMinutes} min · ${this._escape(this._formatDateTime(stop.started_at))} to ${this._escape(this._formatDateTime(stop.ended_at))}</div>
+        ${address}
       </div>
     `;
   }
@@ -496,19 +523,23 @@ class PresenceTimelinePanel extends HTMLElement {
   }
 
   _buildMapModel(selectedMember, memberPanel) {
-    const points = [];
     const markers = [];
-    const history = [];
+    const historyPoints = [];
+    const stops = [];
 
     for (const member of this._summary) {
       if (member.latitude == null || member.longitude == null) {
         continue;
       }
-      points.push({ lat: member.latitude, lon: member.longitude });
       markers.push({
-        lat: member.latitude,
-        lon: member.longitude,
+        memberId: member.member_id,
         label: member.display_name,
+        status: member.status,
+        detail: this._statusText(member),
+        observedAt: member.observed_at || member.last_seen_at,
+        latitude: member.latitude,
+        longitude: member.longitude,
+        batteryLevel: member.battery_level,
         selected: member.member_id === this._selectedMemberId,
       });
     }
@@ -518,42 +549,160 @@ class PresenceTimelinePanel extends HTMLElement {
         if (point.latitude == null || point.longitude == null) {
           continue;
         }
-        points.push({ lat: point.latitude, lon: point.longitude });
-        history.push({ lat: point.latitude, lon: point.longitude });
+        historyPoints.push({
+          latitude: point.latitude,
+          longitude: point.longitude,
+          observedAt: point.observed_at,
+          batteryLevel: point.battery_level,
+        });
       }
     }
 
-    if (!points.length) {
-      return { markerCount: 0, markers: [], historyPoints: [] };
+    for (const stop of memberPanel?.stops ?? []) {
+      if (stop.latitude == null || stop.longitude == null) {
+        continue;
+      }
+      stops.push(stop);
     }
-
-    const latitudes = points.map((point) => point.lat);
-    const longitudes = points.map((point) => point.lon);
-    const minLat = Math.min(...latitudes);
-    const maxLat = Math.max(...latitudes);
-    const minLon = Math.min(...longitudes);
-    const maxLon = Math.max(...longitudes);
-    const latSpan = Math.max(maxLat - minLat, 0.002);
-    const lonSpan = Math.max(maxLon - minLon, 0.002);
-    const padding = 48;
-    const width = 1000 - padding * 2;
-    const height = 640 - padding * 2;
-
-    const project = (lat, lon) => ({
-      x: padding + ((lon - minLon) / lonSpan) * width,
-      y: padding + (1 - (lat - minLat) / latSpan) * height,
-    });
 
     return {
       markerCount: markers.length,
-      markers: markers.map((marker) => ({
-        ...marker,
-        ...project(marker.lat, marker.lon),
-      })),
-      historyPoints: history.map((point) => ({
-        ...project(point.lat, point.lon),
-      })),
+      markers,
+      historyPoints,
+      stops,
     };
+  }
+
+  async _renderMap(mapModel) {
+    const mapHost = this.shadowRoot.getElementById("leaflet-map");
+    if (!mapHost || !mapModel.markerCount) {
+      this._destroyMap();
+      return;
+    }
+
+    const renderId = ++this._mapRenderId;
+    const L = await this._ensureLeaflet();
+    if (renderId !== this._mapRenderId || !this.shadowRoot.getElementById("leaflet-map")) {
+      return;
+    }
+
+    this._destroyMap();
+
+    const map = L.map(mapHost, {
+      zoomControl: true,
+      preferCanvas: true,
+    });
+    this._map = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const bounds = [];
+    for (const member of mapModel.markers) {
+      const latLng = [member.latitude, member.longitude];
+      bounds.push(latLng);
+      const marker = L.circleMarker(latLng, {
+        radius: member.selected ? 9 : 7,
+        color: "#e2e8f0",
+        weight: 2,
+        fillColor: member.selected ? "#f97316" : "#38bdf8",
+        fillOpacity: 0.95,
+      }).addTo(map);
+      marker.bindPopup(this._memberPopup(member));
+      marker.on("click", () => {
+        if (member.memberId !== this._selectedMemberId) {
+          this._loadMemberPanel(member.memberId);
+        }
+      });
+    }
+
+    if (mapModel.historyPoints.length > 1) {
+      const route = mapModel.historyPoints.map((point) => [point.latitude, point.longitude]);
+      route.forEach((latLng) => bounds.push(latLng));
+      L.polyline(route, {
+        color: "#22d3ee",
+        weight: 4,
+        opacity: 0.9,
+      }).addTo(map);
+    }
+
+    for (const stop of mapModel.stops) {
+      const latLng = [stop.latitude, stop.longitude];
+      bounds.push(latLng);
+      const stopMarker = L.circleMarker(latLng, {
+        radius: stop.is_current ? 8 : 6,
+        color: stop.is_current ? "#fdba74" : "#5eead4",
+        weight: 2,
+        fillColor: stop.is_current ? "#f97316" : "#0f766e",
+        fillOpacity: 0.92,
+      }).addTo(map);
+      stopMarker.bindPopup(this._stopPopup(stop));
+    }
+
+    if (bounds.length === 1) {
+      map.setView(bounds[0], 15);
+    } else {
+      map.fitBounds(bounds, { padding: [36, 36] });
+    }
+
+    window.requestAnimationFrame(() => map.invalidateSize());
+  }
+
+  _memberPopup(member) {
+    return `
+      <div class="popup-title">${this._escape(member.label)}</div>
+      <div class="popup-line">${this._escape(member.detail || "No recent location")}</div>
+      <div class="popup-line">Last seen: ${this._escape(this._formatDateTime(member.observedAt))}</div>
+      <div class="popup-line">Battery: ${this._escape(member.batteryLevel ?? "Unknown")}</div>
+    `;
+  }
+
+  _stopPopup(stop) {
+    const durationMinutes = Math.round((stop.duration_seconds || 0) / 60);
+    const address = stop.address ? `<div class="popup-line">${this._escape(stop.address)}</div>` : "";
+    return `
+      <div class="popup-title">${this._escape(stop.label || "Unnamed stop")}</div>
+      ${address}
+      <div class="popup-line">${durationMinutes} min</div>
+      <div class="popup-line">${this._escape(this._formatDateTime(stop.started_at))} to ${this._escape(this._formatDateTime(stop.ended_at))}</div>
+    `;
+  }
+
+  _ensureLeaflet() {
+    if (window.L) {
+      return Promise.resolve(window.L);
+    }
+    if (this._leafletPromise) {
+      return this._leafletPromise;
+    }
+
+    this._leafletPromise = new Promise((resolve, reject) => {
+      const existing = document.head.querySelector("script[data-presence-timeline-leaflet='true']");
+      if (existing) {
+        existing.addEventListener("load", () => resolve(window.L), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Failed to load Leaflet.")), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = `${LEAFLET_JS_URL}?v=0.3.1`;
+      script.async = true;
+      script.dataset.presenceTimelineLeaflet = "true";
+      script.addEventListener("load", () => resolve(window.L), { once: true });
+      script.addEventListener("error", () => reject(new Error("Failed to load Leaflet.")), { once: true });
+      document.head.append(script);
+    });
+
+    return this._leafletPromise;
+  }
+
+  _destroyMap() {
+    if (this._map) {
+      this._map.remove();
+      this._map = null;
+    }
   }
 
   _formatDateTime(value) {

@@ -2,7 +2,12 @@ from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from app.repositories.location_repository import LocationRepository
-from app.services.places import PlaceMatcher, choose_address_granularity
+from app.services.places import (
+    PlaceMatcher,
+    choose_address_granularity,
+    format_reverse_geocode_label,
+    format_reverse_geocode_place_name,
+)
 from app.services.reverse_geocode_cache import ReverseGeocodeCacheService
 from app.services.safety import SafetyDerivationService
 from app.services.stops import derive_stops
@@ -334,20 +339,40 @@ def _build_stop_items(
             None,
         )
         granularity = choose_address_granularity(
-            accuracy_m=representative_point.accuracy_m if representative_point is not None else None,
+            accuracy_m=stop.accuracy_m if stop.accuracy_m is not None else representative_point.accuracy_m if representative_point is not None else None,
             duration_seconds=stop.duration_seconds,
             point_count=stop.point_count,
             moving=False,
         )
-        address = (
-            None
-            if place_name is not None or not resolve_addresses
-            else reverse_geocode_cache.lookup_label(
-                stop.latitude,
-                stop.longitude,
-                granularity=granularity,
-            )
-        )
+        payload = None
+        address = None
+        derived_place_name = None
+        if place_name is None and resolve_addresses:
+            payload = reverse_geocode_cache.lookup_payload(stop.latitude, stop.longitude)
+            if payload is None:
+                reverse_geocode_cache.queue_lookup(stop.latitude, stop.longitude)
+            if payload is None and representative_point is not None:
+                payload = reverse_geocode_cache.lookup_payload(
+                    representative_point.latitude,
+                    representative_point.longitude,
+                )
+            if payload is not None:
+                derived_place_name = format_reverse_geocode_place_name(payload)
+                address = format_reverse_geocode_label(payload, granularity=granularity) or payload.get("display_name")
+            if address is None:
+                address = reverse_geocode_cache.lookup_label(
+                    stop.latitude,
+                    stop.longitude,
+                    granularity=granularity,
+                )
+            if address is None and representative_point is not None:
+                address = reverse_geocode_cache.lookup_label(
+                    representative_point.latitude,
+                    representative_point.longitude,
+                    granularity=granularity,
+                )
+
+        place_name = place_name or derived_place_name
         label = place_name or address or _coordinate_label(stop.latitude, stop.longitude)
         items.append(
             {

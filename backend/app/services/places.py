@@ -124,6 +124,29 @@ class SearchGeocoder:
         return results
 
 
+def format_reverse_geocode_place_name(payload: dict) -> str | None:
+    namedetails = payload.get("namedetails") or {}
+    if namedetails.get("name"):
+        return namedetails["name"]
+    if payload.get("name"):
+        return payload["name"]
+
+    address = payload.get("address") or {}
+    for key in (
+        "amenity",
+        "shop",
+        "tourism",
+        "leisure",
+        "office",
+        "building",
+        "attraction",
+    ):
+        value = address.get(key)
+        if value:
+            return str(value)
+    return None
+
+
 def choose_address_granularity(
     *,
     accuracy_m: float | None,

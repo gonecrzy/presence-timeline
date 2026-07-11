@@ -14,6 +14,7 @@ class DerivedStop:
     latitude: float
     longitude: float
     point_count: int
+    accuracy_m: float | None = None
 
     @property
     def duration_seconds(self) -> int:
@@ -45,14 +46,17 @@ def _append_stop(stops: list[DerivedStop], points: Sequence[object], minimum_dur
     if ended_at - started_at < minimum_duration:
         return
 
-    representative_point = points[-1]
+    latitude = sum(point.latitude for point in points) / len(points)
+    longitude = sum(point.longitude for point in points) / len(points)
+    accuracies = [point.accuracy_m for point in points if getattr(point, "accuracy_m", None) is not None]
     stops.append(
         DerivedStop(
             started_at=started_at,
             ended_at=ended_at,
-            latitude=representative_point.latitude,
-            longitude=representative_point.longitude,
+            latitude=latitude,
+            longitude=longitude,
             point_count=len(points),
+            accuracy_m=min(accuracies) if accuracies else None,
         )
     )
 

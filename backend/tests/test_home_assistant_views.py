@@ -88,6 +88,23 @@ class ExplodingReverseGeocoder:
         raise AssertionError("reverse geocoder should not be called")
 
 
+class FakeReverseGeocodeCache:
+    def __init__(self, labels: dict[tuple[float, float, str], str] | None = None) -> None:
+        self.labels = labels or {}
+        self.calls = []
+
+    def lookup_label(self, latitude: float, longitude: float, *, granularity: str) -> str | None:
+        rounded = (round(latitude, 4), round(longitude, 4), granularity)
+        self.calls.append(rounded)
+        return self.labels.get(rounded)
+
+    def lookup_payload(self, latitude: float, longitude: float) -> dict | None:
+        return None
+
+    def queue_lookup(self, latitude: float, longitude: float) -> bool:
+        return True
+
+
 def test_home_assistant_summary_does_not_block_on_reverse_geocoding(monkeypatch) -> None:
     repository = FakeHomeAssistantRepository()
     monkeypatch.setattr(
@@ -97,13 +114,18 @@ def test_home_assistant_summary_does_not_block_on_reverse_geocoding(monkeypatch)
 
     service = HomeAssistantViewService(db=None)
     service.member_views.reverse_geocoder = ExplodingReverseGeocoder()
+    service.member_views.reverse_geocode_cache = FakeReverseGeocodeCache(
+        labels={
+            (37.4301, -122.0901, "block"): "100 block of Sundance Court, Sangaree",
+        }
+    )
 
     items = service.summary("family-alpha")
 
     assert len(items) == 1
     assert items[0]["status"] == "stopped"
-    assert items[0]["current_location_label"] == "37.4301, -122.0901"
-    assert items[0]["status_detail"] == "37.4301, -122.0901"
+    assert items[0]["current_location_label"] == "100 block of Sundance Court, Sangaree"
+    assert items[0]["status_detail"] == "100 block of Sundance Court, Sangaree"
 
 
 def test_home_assistant_member_panel_does_not_block_on_reverse_geocoding(monkeypatch) -> None:
@@ -115,6 +137,11 @@ def test_home_assistant_member_panel_does_not_block_on_reverse_geocoding(monkeyp
 
     service = HomeAssistantViewService(db=None)
     service.member_views.reverse_geocoder = ExplodingReverseGeocoder()
+    service.member_views.reverse_geocode_cache = FakeReverseGeocodeCache(
+        labels={
+            (37.4301, -122.0901, "block"): "100 block of Sundance Court, Sangaree",
+        }
+    )
     service.member_views.trip_derivation = SimpleNamespace(
         rebuild_member_day=lambda member_id, target_date: None
     )
@@ -128,7 +155,7 @@ def test_home_assistant_member_panel_does_not_block_on_reverse_geocoding(monkeyp
     )
 
     assert panel is not None
-    assert panel["member"]["current_location_label"] == "37.4301, -122.0901"
-    assert panel["stops"][0]["label"] == "37.4301, -122.0901"
-    assert panel["timeline"][0]["label"] == "37.4301, -122.0901"
+    assert panel["member"]["current_location_label"] == "100 block of Sundance Court, Sangaree"
+    assert panel["stops"][0]["label"] == "100 block of Sundance Court, Sangaree"
+    assert panel["timeline"][0]["label"] == "100 block of Sundance Court, Sangaree"
     assert panel["timeline"][0]["kind"] == "location_stay"
