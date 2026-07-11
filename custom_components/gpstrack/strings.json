@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to GpsTrack",
+        "description": "Enter the GpsTrack backend details.",
+        "data": {
+          "base_url": "Base URL",
+          "access_token": "Access token",
+          "scan_interval": "Refresh interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the GpsTrack backend.",
+      "invalid_auth": "The backend rejected the provided authentication.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This GpsTrack backend is already configured."
+    }
+  }
+}

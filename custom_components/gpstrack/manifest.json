@@ -1,0 +1,12 @@
+{
+  "domain": "gpstrack",
+  "name": "GpsTrack",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "ssh://git@10.1.10.204:222/gonecrzy69/gpstrack.git",
+  "issue_tracker": "ssh://git@10.1.10.204:222/gonecrzy69/gpstrack.git",
+  "codeowners": [],
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "requirements": []
+}
