@@ -41,6 +41,18 @@ test("buildRefreshStatus distinguishes connected stale and retrying states", () 
   );
 });
 
+test("buildRefreshStatus falls back to fresh summary timestamps when integration status is unavailable", () => {
+  const now = new Date("2026-07-11T12:30:00Z");
+
+  assert.deepEqual(
+    buildRefreshStatus(null, now, [
+      { observed_at: "2026-07-11T12:27:00Z" },
+      { observed_at: "2026-07-11T12:22:00Z" },
+    ]),
+    { tone: "good", label: "Connected", detail: "Updated 3m ago" },
+  );
+});
+
 test("formatStopWaypointLabel uses alphabetic markers", () => {
   assert.equal(formatStopWaypointLabel(0), "A");
   assert.equal(formatStopWaypointLabel(1), "B");

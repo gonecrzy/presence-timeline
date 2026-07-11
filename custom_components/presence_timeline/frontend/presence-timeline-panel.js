@@ -184,7 +184,7 @@ class PresenceTimelinePanel extends HTMLElement {
   }
 
   _refreshStatus() {
-    return buildRefreshStatus(this._integrationStatus, new Date());
+    return buildRefreshStatus(this._integrationStatus, new Date(), this._summary);
   }
 
   _render() {

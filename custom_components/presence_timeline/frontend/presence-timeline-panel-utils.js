@@ -25,11 +25,12 @@ export function buildHistoryWindow(hours, now = new Date()) {
   return { hours: normalizedHours, startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
-export function buildRefreshStatus(status, now = new Date()) {
+export function buildRefreshStatus(status, now = new Date(), summary = []) {
   const state = status?.state ?? "unknown";
   const lastEventAt = parseDate(status?.last_event_at ?? status?.lastEventAt);
   const lastConnectedAt = parseDate(status?.last_connected_at ?? status?.lastConnectedAt);
-  const baseline = lastEventAt ?? lastConnectedAt;
+  const fallbackSummaryAt = latestSummaryTimestamp(summary);
+  const baseline = lastEventAt ?? lastConnectedAt ?? fallbackSummaryAt;
   const ageMinutes = baseline ? Math.max(0, Math.round((now.getTime() - baseline.getTime()) / 60000)) : null;
 
   if (state === "connected" && ageMinutes !== null && ageMinutes <= STATUS_STALE_MINUTES) {
@@ -60,6 +61,20 @@ export function buildRefreshStatus(status, now = new Date()) {
       tone: "error",
       label: "Disabled",
       detail: "Ingestion disabled",
+    };
+  }
+  if (ageMinutes !== null && ageMinutes <= STATUS_STALE_MINUTES) {
+    return {
+      tone: "good",
+      label: "Connected",
+      detail: ageMinutes <= 1 ? "Live now" : `Updated ${ageMinutes}m ago`,
+    };
+  }
+  if (ageMinutes !== null) {
+    return {
+      tone: "stale",
+      label: "Stale",
+      detail: `Last update ${ageMinutes}m ago`,
     };
   }
   return {
@@ -144,4 +159,18 @@ function parseDate(value) {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function latestSummaryTimestamp(summary) {
+  let latest = null;
+  for (const member of summary || []) {
+    const candidate = parseDate(member?.observed_at ?? member?.observedAt ?? member?.last_seen_at ?? member?.lastSeenAt);
+    if (!candidate) {
+      continue;
+    }
+    if (!latest || candidate > latest) {
+      latest = candidate;
+    }
+  }
+  return latest;
 }
