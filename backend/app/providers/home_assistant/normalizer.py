@@ -45,6 +45,14 @@ class HomeAssistantEventNormalizer:
         if not entity_id.startswith("device_tracker."):
             return None
 
+        mirrored_source = attributes.get("source_entity_id")
+        if (
+            isinstance(mirrored_source, str)
+            and mirrored_source
+            and mirrored_source != entity_id
+        ):
+            return None
+
         latitude = attributes.get("latitude")
         longitude = attributes.get("longitude")
         if latitude is None or longitude is None:

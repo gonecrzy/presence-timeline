@@ -46,26 +46,67 @@ class FakeHomeAssistantRepository:
         ]
         self.events = []
         self.trips = []
+        self.mirrored_member = SimpleNamespace(
+            id=uuid4(),
+            family_id=self.member.family_id,
+            display_name="Sam Location",
+            is_child=False,
+            last_seen_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+            devices=[
+                SimpleNamespace(
+                    id=uuid4(),
+                    provider="home_assistant",
+                    external_id="device_tracker.sam_location",
+                    label="Sam Location",
+                    ignored=False,
+                    last_seen_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+                )
+            ],
+        )
+        self.mirrored_points = [
+            SimpleNamespace(
+                member_id=self.mirrored_member.id,
+                observed_at=datetime(2026, 7, 8, 20, 12, tzinfo=UTC),
+                latitude=37.4301,
+                longitude=-122.0901,
+                accuracy_m=18.0,
+                battery_level=80,
+                source_entity_id="device_tracker.sam_location",
+            )
+        ]
 
     def list_members_for_family_slug(self, family_slug: str):
         assert family_slug == "family-alpha"
-        return [self.member]
+        return [self.member, self.mirrored_member]
 
     def get_latest_point_for_member(self, member_id):
-        assert member_id == self.member.id
-        return self.points[-1]
+        if member_id == self.member.id:
+            return self.points[-1]
+        assert member_id == self.mirrored_member.id
+        return self.mirrored_points[-1]
 
     def get_member(self, member_id):
-        assert member_id == self.member.id
-        return self.member
+        if member_id == self.member.id:
+            return self.member
+        assert member_id == self.mirrored_member.id
+        return self.mirrored_member
 
     def list_places_for_family_id(self, family_id):
         assert family_id == self.member.family_id
         return []
 
     def list_member_history(self, member_id, start, end):
-        assert member_id == self.member.id
-        return self.points
+        if member_id == self.member.id:
+            return self.points
+        assert member_id == self.mirrored_member.id
+        return self.mirrored_points
+
+    def get_reverse_geocode_cache(self, latitude_rounded: float, longitude_rounded: float):
+        return None
+
+    def enqueue_reverse_geocode_cache(self, latitude_rounded: float, longitude_rounded: float):
+        row = SimpleNamespace(payload=None)
+        return row, True
 
     def replace_safety_events_for_range(self, member_id, start, end, events):
         assert member_id == self.member.id
@@ -159,3 +200,17 @@ def test_home_assistant_member_panel_does_not_block_on_reverse_geocoding(monkeyp
     assert panel["stops"][0]["label"] == "100 block of Sundance Court, Sangaree"
     assert panel["timeline"][0]["label"] == "100 block of Sundance Court, Sangaree"
     assert panel["timeline"][0]["kind"] == "location_stay"
+
+
+def test_home_assistant_summary_hides_presence_timeline_mirror_members(monkeypatch) -> None:
+    repository = FakeHomeAssistantRepository()
+    monkeypatch.setattr(
+        "app.services.member_views.LocationRepository",
+        lambda db: repository,
+    )
+
+    service = HomeAssistantViewService(db=None)
+
+    items = service.summary("family-alpha")
+
+    assert [item["display_name"] for item in items] == ["Sam"]

@@ -117,3 +117,19 @@ def test_normalizer_enriches_tracker_state_from_related_battery_sensors() -> Non
     assert event is not None
     assert event.battery_level == 21
     assert event.is_charging is True
+
+
+def test_normalizer_ignores_presence_timeline_mirror_tracker_state() -> None:
+    state = {
+        "entity_id": "device_tracker.kristi_location",
+        "last_updated": "2026-07-08T20:59:40Z",
+        "attributes": {
+            "friendly_name": "Kristi Location",
+            "latitude": 37.4219999,
+            "longitude": -122.0840575,
+            "gps_accuracy": 12,
+            "source_entity_id": "device_tracker.pixel_10_pro",
+        },
+    }
+
+    assert HomeAssistantEventNormalizer().normalize_state(state) is None

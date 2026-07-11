@@ -37,6 +37,7 @@ class MemberViewService:
                 "devices": [_serialize_device(device) for device in member.devices],
             }
             for member in members
+            if not _is_presence_timeline_mirror_member(member)
         ]
 
     def set_device_ignored(self, member_id: UUID, device_id: UUID, ignored: bool) -> dict | None:
@@ -395,6 +396,22 @@ def _build_stop_items(
 
 def _coordinate_label(latitude: float, longitude: float) -> str:
     return f"{latitude:.4f}, {longitude:.4f}"
+
+
+def _is_presence_timeline_mirror_member(member) -> bool:
+    display_name = str(getattr(member, "display_name", "") or "")
+    devices = list(getattr(member, "devices", []) or [])
+    if not display_name.endswith(" Location") or not devices:
+        return False
+
+    for device in devices:
+        external_id = str(getattr(device, "external_id", "") or "")
+        if not external_id.startswith("device_tracker."):
+            return False
+        slug = external_id.split(".", 1)[-1]
+        if not slug.endswith("_location"):
+            return False
+    return True
 
 
 def _dates_in_range(start_date: date, end_date: date) -> list[date]:
