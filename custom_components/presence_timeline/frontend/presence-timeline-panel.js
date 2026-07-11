@@ -9,7 +9,7 @@ const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = "0.3.4";
+const ASSET_VERSION = "0.3.5";
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -23,6 +23,8 @@ class PresenceTimelinePanel extends HTMLElement {
     this._loading = false;
     this._error = null;
     this._renderedMapSignature = null;
+    this._selectedStopIndex = null;
+    this._pendingMapCommand = null;
   }
 
   set hass(hass) {
@@ -84,6 +86,8 @@ class PresenceTimelinePanel extends HTMLElement {
     }
 
     this._selectedMemberId = memberId;
+    this._selectedStopIndex = null;
+    this._pendingMapCommand = null;
     this._loading = true;
     this._error = null;
     this._render();
@@ -339,6 +343,18 @@ class PresenceTimelinePanel extends HTMLElement {
           border-radius: 12px;
           background: color-mix(in srgb, var(--card-background-color) 88%, var(--primary-color));
         }
+        .item-button {
+          width: 100%;
+          border: 1px solid transparent;
+          color: inherit;
+          font: inherit;
+          text-align: left;
+          cursor: pointer;
+        }
+        .item-button[aria-pressed="true"] {
+          border-color: var(--primary-color);
+          background: color-mix(in srgb, var(--card-background-color) 80%, var(--primary-color));
+        }
         .item-title {
           font-weight: 600;
           margin-bottom: 4px;
@@ -426,7 +442,7 @@ class PresenceTimelinePanel extends HTMLElement {
               <div class="section">
                 <h2>Stops</h2>
                 <div class="list">
-                  ${historyStops.length ? historyStops.slice(0, 6).map((stop) => this._stopTemplate(stop)).join("") : '<div class="empty">No qualifying stops in the selected window.</div>'}
+                  ${historyStops.length ? historyStops.slice(0, 6).map((stop, index) => this._stopTemplate(stop, index)).join("") : '<div class="empty">No qualifying stops in the selected window.</div>'}
                 </div>
               </div>
               <div class="section">
@@ -442,8 +458,16 @@ class PresenceTimelinePanel extends HTMLElement {
     `;
 
     this.shadowRoot.querySelector("#refresh-button")?.addEventListener("click", () => this._loadSummary(true));
-      this.shadowRoot.querySelectorAll(".badge").forEach((button) => {
+    this.shadowRoot.querySelectorAll(".badge").forEach((button) => {
       button.addEventListener("click", () => this._loadMemberPanel(button.dataset.memberId));
+    });
+    this.shadowRoot.querySelectorAll(".item-button[data-stop-index]").forEach((button) => {
+      button.addEventListener("click", () => this._focusStop(Number(button.dataset.stopIndex)));
+    });
+    this.shadowRoot.getElementById("map-frame")?.addEventListener("load", () => {
+      if (this._pendingMapCommand && this._postMapCommand(this._pendingMapCommand)) {
+        this._pendingMapCommand = null;
+      }
     });
 
     this._renderMapFrame(mapModel).catch((err) => {
@@ -476,16 +500,16 @@ class PresenceTimelinePanel extends HTMLElement {
     `;
   }
 
-  _stopTemplate(stop) {
+  _stopTemplate(stop, index) {
     const title = stop.label || "Unnamed stop";
     const durationMinutes = Math.round((stop.duration_seconds || 0) / 60);
     const address = stop.address && stop.address !== stop.label ? `<div class="item-submeta">${this._escape(stop.address)}</div>` : "";
     return `
-      <div class="item">
+      <button class="item item-button" type="button" aria-pressed="${index === this._selectedStopIndex}" data-stop-index="${index}">
         <div class="item-title">${this._escape(title)}${stop.is_current ? " · Current" : ""}</div>
         <div class="item-meta">${durationMinutes} min · ${this._escape(this._formatDateTime(stop.started_at))} to ${this._escape(this._formatDateTime(stop.ended_at))}</div>
         ${address}
-      </div>
+      </button>
     `;
   }
 
@@ -555,12 +579,40 @@ class PresenceTimelinePanel extends HTMLElement {
     }
 
     const nextSignature = createMapRenderSignature(mapModel);
-    if (nextSignature === this._renderedMapSignature) {
+    if (nextSignature === this._renderedMapSignature && frame.srcdoc) {
       return;
     }
 
     frame.srcdoc = this._mapDocument(mapModel);
     this._renderedMapSignature = nextSignature;
+  }
+
+  _focusStop(index) {
+    if (!Number.isInteger(index) || index < 0) {
+      return;
+    }
+
+    this._selectedStopIndex = index;
+    this._syncStopSelection();
+    this._pendingMapCommand = { type: "presence-timeline-focus-stop", index };
+    if (this._postMapCommand(this._pendingMapCommand)) {
+      this._pendingMapCommand = null;
+    }
+  }
+
+  _syncStopSelection() {
+    this.shadowRoot.querySelectorAll(".item-button[data-stop-index]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(Number(button.dataset.stopIndex) === this._selectedStopIndex));
+    });
+  }
+
+  _postMapCommand(command) {
+    const frame = this.shadowRoot.getElementById("map-frame");
+    if (!frame?.contentWindow) {
+      return false;
+    }
+    frame.contentWindow.postMessage(command, window.location.origin);
+    return true;
   }
 
   _mapDocument(mapModel) {
@@ -664,6 +716,7 @@ class PresenceTimelinePanel extends HTMLElement {
             }).addTo(map);
 
             const bounds = [];
+            const stopMarkers = [];
             const addBounds = (latitude, longitude) => {
               if (latitude == null || longitude == null) {
                 return;
@@ -726,6 +779,27 @@ class PresenceTimelinePanel extends HTMLElement {
                 <div class="popup-line">\${durationMinutes} min</div>
                 <div class="popup-line">\${escapeHtml(formatDateTime(stop.started_at))} to \${escapeHtml(formatDateTime(stop.ended_at))}</div>
               \`);
+              stopMarkers.push(marker);
+            });
+
+            const focusStop = (index) => {
+              const marker = stopMarkers[index];
+              if (!marker) {
+                return;
+              }
+              const latLng = marker.getLatLng();
+              map.flyTo(latLng, Math.max(map.getZoom(), 16), { duration: 0.45 });
+              marker.openPopup();
+            };
+
+            window.addEventListener("message", (event) => {
+              if (event.data?.type !== "presence-timeline-focus-stop") {
+                return;
+              }
+              const index = Number(event.data.index);
+              if (Number.isInteger(index)) {
+                focusStop(index);
+              }
             });
 
             if (bounds.length === 1) {
