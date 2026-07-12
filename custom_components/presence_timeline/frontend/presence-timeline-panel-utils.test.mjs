@@ -68,6 +68,8 @@ test("formatMemberBadgeStatus compacts stopped state wording", () => {
 
 test("formatDistanceImperial uses feet for short trips and miles for longer ones", () => {
   assert.equal(formatDistanceImperial(18), "59 ft");
+  assert.equal(formatDistanceImperial(304.8), "1000 ft");
+  assert.equal(formatDistanceImperial(365.76), "0.2 mi");
   assert.equal(formatDistanceImperial(4143), "2.6 mi");
 });
 

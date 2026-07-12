@@ -116,8 +116,9 @@ export function formatDistanceImperial(distanceMeters) {
     return "Distance unknown";
   }
   const feet = distanceMeters * 3.28084;
-  if (feet < 528) {
-    return `${Math.round(feet)} ft`;
+  const roundedFeet = Math.round(feet);
+  if (roundedFeet <= 1000) {
+    return `${roundedFeet} ft`;
   }
   const miles = feet / 5280;
   return `${miles.toFixed(miles < 10 ? 1 : 0)} mi`;

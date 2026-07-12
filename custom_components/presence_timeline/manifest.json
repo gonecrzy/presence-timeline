@@ -1,7 +1,7 @@
 {
   "domain": "presence_timeline",
   "name": "Presence Timeline",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "config_flow": true,
   "documentation": "https://github.com/gonecrzy/gpstrack",
   "issue_tracker": "https://github.com/gonecrzy/gpstrack/issues",
