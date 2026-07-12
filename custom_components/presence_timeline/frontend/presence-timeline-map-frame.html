@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="./vendor/leaflet.css">
+    <style>
+      html, body, #map {
+        height: 100%;
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: system-ui, sans-serif;
+      }
+      .leaflet-container {
+        background: #0f172a;
+      }
+      .leaflet-popup-content-wrapper,
+      .leaflet-popup-tip {
+        background: rgba(15, 23, 42, 0.96);
+        color: #e2e8f0;
+      }
+      .leaflet-popup-content {
+        margin: 12px 14px;
+        line-height: 1.45;
+        min-width: 180px;
+      }
+      .popup-title {
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .popup-line {
+        color: rgba(226, 232, 240, 0.86);
+        font-size: 13px;
+      }
+      .stop-waypoint {
+        background: transparent;
+        border: 0;
+      }
+      .stop-waypoint span {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 2px solid #99f6e4;
+        background: rgba(15, 118, 110, 0.94);
+        color: #f8fafc;
+        font-size: 13px;
+        font-weight: 700;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.36);
+      }
+      .stop-waypoint.current span {
+        border-color: #fdba74;
+        background: rgba(249, 115, 22, 0.96);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map" role="img" aria-label="Presence Timeline family map"></div>
+    <script src="./vendor/leaflet.js"></script>
+    <script>
+      const map = L.map(document.getElementById("map"), {
+        zoomControl: true,
+        preferCanvas: true,
+      });
+
+      const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors",
+        updateWhenIdle: true,
+        keepBuffer: 4,
+      }).addTo(map);
+
+      const markerLayer = L.layerGroup().addTo(map);
+      const routeLayer = L.layerGroup().addTo(map);
+      const stopLayer = L.layerGroup().addTo(map);
+      const stopMarkers = [];
+      let lastSignature = null;
+
+      const escapeHtml = (value) => String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+
+      const formatDateTime = (value) => {
+        if (!value) {
+          return "Unknown";
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return String(value);
+        }
+        return date.toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      };
+
+      const resetLayers = () => {
+        markerLayer.clearLayers();
+        routeLayer.clearLayers();
+        stopLayer.clearLayers();
+        stopMarkers.length = 0;
+      };
+
+      const scheduleMapRefresh = () => {
+        window.requestAnimationFrame(() => {
+          map.invalidateSize(false);
+          tileLayer.redraw();
+        });
+        window.setTimeout(() => {
+          map.invalidateSize(false);
+          tileLayer.redraw();
+        }, 150);
+      };
+
+      const focusStop = (index) => {
+        const marker = stopMarkers[index];
+        if (!marker) {
+          return;
+        }
+        const latLng = marker.getLatLng();
+        map.flyTo(latLng, Math.max(map.getZoom(), 16), { duration: 0.45 });
+        marker.openPopup();
+      };
+
+      const applyViewport = (bounds) => {
+        if (bounds.length === 1) {
+          map.setView(bounds[0], 15);
+          scheduleMapRefresh();
+          return;
+        }
+        if (bounds.length > 1) {
+          map.fitBounds(bounds, { padding: [36, 36] });
+          scheduleMapRefresh();
+          return;
+        }
+        map.setView([33.0, -80.0], 11);
+        scheduleMapRefresh();
+      };
+
+      const renderMap = (model, signature = null) => {
+        if (!model) {
+          return;
+        }
+
+        lastSignature = signature;
+        resetLayers();
+
+        const bounds = [];
+        const addBounds = (latitude, longitude) => {
+          if (latitude == null || longitude == null) {
+            return;
+          }
+          bounds.push([latitude, longitude]);
+        };
+
+        for (const member of model.markers || []) {
+          addBounds(member.latitude, member.longitude);
+          const marker = L.circleMarker([member.latitude, member.longitude], {
+            radius: member.selected ? 9 : 7,
+            color: "#e2e8f0",
+            weight: 2,
+            fillColor: member.selected ? "#f97316" : "#38bdf8",
+            fillOpacity: 0.95,
+          }).addTo(markerLayer);
+          marker.bindPopup(`
+            <div class="popup-title">${escapeHtml(member.label)}</div>
+            <div class="popup-line">${escapeHtml(member.detail || "No recent location")}</div>
+            <div class="popup-line">Last seen: ${escapeHtml(formatDateTime(member.observedAt))}</div>
+            <div class="popup-line">Battery: ${escapeHtml(member.batteryLevel ?? "Unknown")}</div>
+          `);
+        }
+
+        for (const segment of model.historySegments || []) {
+          if (segment.length < 2) {
+            continue;
+          }
+          const route = segment.map((point) => {
+            addBounds(point.latitude, point.longitude);
+            return [point.latitude, point.longitude];
+          });
+          L.polyline(route, {
+            color: "#22d3ee",
+            weight: 4,
+            opacity: 0.9,
+          }).addTo(routeLayer);
+        }
+
+        (model.stops || []).forEach((stop, index) => {
+          addBounds(stop.latitude, stop.longitude);
+          const marker = L.marker([stop.latitude, stop.longitude], {
+            icon: L.divIcon({
+              className: "stop-waypoint" + (stop.is_current ? " current" : ""),
+              html: "<span>" + escapeHtml(stop.waypointLabel || String.fromCharCode(65 + (index % 26))) + "</span>",
+              iconSize: [28, 28],
+              iconAnchor: [14, 14],
+            }),
+          }).addTo(stopLayer);
+
+          const durationMinutes = Math.round((stop.duration_seconds || 0) / 60);
+          const address = stop.address && stop.address !== stop.label
+            ? `<div class="popup-line">${escapeHtml(stop.address)}</div>`
+            : "";
+
+          marker.bindPopup(`
+            <div class="popup-title">${escapeHtml(stop.waypointLabel || "")}${stop.waypointLabel ? " · " : ""}${escapeHtml(stop.label || "Unnamed stop")}${stop.is_current ? " · Current" : ""}</div>
+            ${address}
+            <div class="popup-line">${durationMinutes} min</div>
+            <div class="popup-line">${escapeHtml(formatDateTime(stop.started_at))} to ${escapeHtml(formatDateTime(stop.ended_at))}</div>
+          `);
+          stopMarkers.push(marker);
+        });
+
+        applyViewport(bounds);
+      };
+
+      tileLayer.on("load", () => {
+        if (lastSignature != null) {
+          scheduleMapRefresh();
+        }
+      });
+
+      window.addEventListener("message", (event) => {
+        if (event.origin !== window.location.origin) {
+          return;
+        }
+        if (event.data?.type === "presence-timeline-render-map") {
+          renderMap(event.data.model, event.data.signature);
+          return;
+        }
+        if (event.data?.type === "presence-timeline-focus-stop") {
+          const index = Number(event.data.index);
+          if (Number.isInteger(index)) {
+            focusStop(index);
+          }
+        }
+      });
+
+      window.addEventListener("resize", scheduleMapRefresh);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          scheduleMapRefresh();
+        }
+      });
+
+      map.setView([33.0, -80.0], 11);
+      scheduleMapRefresh();
+    </script>
+  </body>
+</html>
