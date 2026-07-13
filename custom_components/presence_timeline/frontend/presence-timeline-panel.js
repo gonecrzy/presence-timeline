@@ -23,7 +23,7 @@ const PANEL_PREFERENCES_KEY = "presence-timeline-panel-preferences";
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.18");
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.19");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -953,15 +953,26 @@ class PresenceTimelinePanel extends HTMLElement {
             const baseLayers = {
               "Dark map": L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", tileLayerOptions),
               "Light map": L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", tileLayerOptions),
+              "Street map": L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", tileLayerOptions),
             };
-            const selectedBaseLayer = "${selectedMapTheme}" === "light" ? baseLayers["Light map"] : baseLayers["Dark map"];
+            const selectedLayerName = "${selectedMapTheme}" === "light"
+              ? "Light map"
+              : "${selectedMapTheme}" === "street"
+                ? "Street map"
+                : "Dark map";
+            const selectedBaseLayer = baseLayers[selectedLayerName];
             selectedBaseLayer.addTo(map);
             L.control.layers(baseLayers, null, {
               collapsed: true,
               position: "topright",
             }).addTo(map);
             map.on("baselayerchange", (event) => {
-              const mapTheme = event.name === "Light map" ? "light" : "dark";
+              const mapThemeByName = {
+                "Dark map": "dark",
+                "Light map": "light",
+                "Street map": "street",
+              };
+              const mapTheme = mapThemeByName[event.name] || "dark";
               window.parent.postMessage({
                 type: "presence-timeline-map-theme-change",
                 mapTheme,

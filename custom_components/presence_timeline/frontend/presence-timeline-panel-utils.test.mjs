@@ -35,20 +35,22 @@ test("map theme helpers expose supported themes and normalize invalid values", (
     [
       { value: "dark", label: "Dark map" },
       { value: "light", label: "Light map" },
+      { value: "street", label: "Street map" },
     ],
   );
   assert.equal(normalizeMapTheme("light"), "light");
   assert.equal(normalizeMapTheme("dark"), "dark");
+  assert.equal(normalizeMapTheme("street"), "street");
   assert.equal(normalizeMapTheme("other", "light"), "light");
 });
 
 test("mergePanelPreferences normalizes stored panel state", () => {
   assert.deepEqual(
     mergePanelPreferences(
-      { historyHours: "48", mapTheme: "light", showHistoryRoutes: false },
+      { historyHours: "48", mapTheme: "street", showHistoryRoutes: false },
       { historyHours: 24, mapTheme: "dark", showHistoryRoutes: true },
     ),
-    { historyHours: 48, mapTheme: "light", showHistoryRoutes: false },
+    { historyHours: 48, mapTheme: "street", showHistoryRoutes: false },
   );
   assert.deepEqual(
     mergePanelPreferences(

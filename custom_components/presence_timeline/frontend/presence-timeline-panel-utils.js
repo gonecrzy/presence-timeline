@@ -9,6 +9,7 @@ const HISTORY_WINDOW_OPTIONS = [
 const MAP_THEME_OPTIONS = [
   { value: "dark", label: "Dark map" },
   { value: "light", label: "Light map" },
+  { value: "street", label: "Street map" },
 ];
 
 const STATUS_STALE_MINUTES = 20;

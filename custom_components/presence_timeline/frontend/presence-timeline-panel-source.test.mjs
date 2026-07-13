@@ -12,6 +12,7 @@ test("panel source renders the map inline via srcdoc with carto tile safeguards"
   assert.match(source, /const LEAFLET_CSS_URL = `\$\{STATIC_ROOT\}\/vendor\/leaflet\.css`;/);
   assert.match(source, /const LEAFLET_JS_URL = `\$\{STATIC_ROOT\}\/vendor\/leaflet\.js`;/);
   assert.match(source, /L\.control\.layers\(baseLayers, null,/);
+  assert.match(source, /"Street map": L\.tileLayer\("https:\/\/\{s\}\.basemaps\.cartocdn\.com\/rastertiles\/voyager\/\{z\}\/\{x\}\/\{y\}\{r\}\.png"/);
   assert.match(source, /window\.parent\.postMessage\(\{/);
   assert.match(source, /presence-timeline-map-theme-change/);
   assert.match(source, /fadeAnimation:\s*false/);
