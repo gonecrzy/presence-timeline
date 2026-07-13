@@ -9,7 +9,6 @@ import {
   formatDistanceImperial,
   formatMemberBadgeStatus,
   getHistoryWindowOptions,
-  getMapThemeOptions,
   mergePanelPreferences,
   normalizeHistoryHours,
   normalizeMapTheme,
@@ -24,7 +23,7 @@ const PANEL_PREFERENCES_KEY = "presence-timeline-panel-preferences";
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.17");
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.18");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -45,6 +44,7 @@ class PresenceTimelinePanel extends HTMLElement {
     this._showHistoryRoutes = true;
     this._selectedMapTheme = DEFAULT_MAP_THEME;
     this._preferencesLoaded = false;
+    this._boundHandleFrameMessage = (event) => this._handleFrameMessage(event);
   }
 
   set hass(hass) {
@@ -73,7 +73,12 @@ class PresenceTimelinePanel extends HTMLElement {
   }
 
   connectedCallback() {
+    window.addEventListener("message", this._boundHandleFrameMessage);
     this._render();
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("message", this._boundHandleFrameMessage);
   }
 
   async _ensureLoaded() {
@@ -212,6 +217,16 @@ class PresenceTimelinePanel extends HTMLElement {
     this._render();
   }
 
+  _handleFrameMessage(event) {
+    const frame = this.shadowRoot.getElementById("map-frame");
+    if (!frame?.contentWindow || event.source !== frame.contentWindow) {
+      return;
+    }
+    if (event.data?.type === "presence-timeline-map-theme-change") {
+      this._handleMapThemeChange(event.data.mapTheme);
+    }
+  }
+
   _defaultPanelPreferences() {
     return {
       historyHours: normalizeHistoryHours(this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS, DEFAULT_HISTORY_HOURS),
@@ -254,7 +269,6 @@ class PresenceTimelinePanel extends HTMLElement {
     const mapModel = this._buildMapModel(selectedMember, this._memberPanel);
     const refreshStatus = this._refreshStatus();
     const historyWindowOptions = getHistoryWindowOptions();
-    const mapThemeOptions = getMapThemeOptions();
     const historyStops = this._showHistoryRoutes ? mapModel.stops : [];
     const historyTrips = this._showHistoryRoutes
       ? (this._memberPanel?.timeline ?? []).filter((item) => item.kind === "trip")
@@ -605,11 +619,6 @@ class PresenceTimelinePanel extends HTMLElement {
                 <option value="${option.hours}" ${option.hours === this._selectedHistoryHours ? "selected" : ""}>${option.label}</option>
               `).join("")}
             </select>
-            <select id="map-theme-select" aria-label="Map theme">
-              ${mapThemeOptions.map((option) => `
-                <option value="${option.value}" ${option.value === this._selectedMapTheme ? "selected" : ""}>${option.label}</option>
-              `).join("")}
-            </select>
             <button id="toggle-history-button" class="toggle-button" type="button" aria-pressed="${this._showHistoryRoutes}">
               ${this._showHistoryRoutes ? "History on" : "Current only"}
             </button>
@@ -693,9 +702,6 @@ class PresenceTimelinePanel extends HTMLElement {
     this.shadowRoot.querySelector("#toggle-history-button")?.addEventListener("click", () => this._toggleHistoryRoutes());
     this.shadowRoot.querySelector("#history-window-select")?.addEventListener("change", (event) => {
       this._handleHistoryWindowChange(event.target.value);
-    });
-    this.shadowRoot.querySelector("#map-theme-select")?.addEventListener("change", (event) => {
-      this._handleMapThemeChange(event.target.value);
     });
     this.shadowRoot.querySelectorAll(".badge").forEach((button) => {
       button.addEventListener("click", () => this._loadMemberPanel(button.dataset.memberId));
@@ -827,7 +833,7 @@ class PresenceTimelinePanel extends HTMLElement {
 
   _mapDocument(mapModel) {
     const modelJson = JSON.stringify(mapModel).replaceAll("<", "\\u003c");
-    const tileSet = this._selectedMapTheme === "light" ? "light_all" : "dark_all";
+    const selectedMapTheme = normalizeMapTheme(this._selectedMapTheme, DEFAULT_MAP_THEME);
     return `
       <!doctype html>
       <html lang="en">
@@ -849,6 +855,16 @@ class PresenceTimelinePanel extends HTMLElement {
             .leaflet-container img.leaflet-tile.leaflet-tile-loaded {
               opacity: 1 !important;
               visibility: visible !important;
+            }
+            .leaflet-control-layers {
+              border: 0;
+              border-radius: 8px;
+              box-shadow: 0 8px 20px rgba(15, 23, 42, 0.24);
+            }
+            .leaflet-control-layers-expanded {
+              background: rgba(255, 255, 255, 0.96);
+              color: #0f172a;
+              font: 13px system-ui, sans-serif;
             }
             .leaflet-popup-content-wrapper,
             .leaflet-popup-tip {
@@ -926,14 +942,31 @@ class PresenceTimelinePanel extends HTMLElement {
               fadeAnimation: false,
             });
 
-            L.tileLayer("https://{s}.basemaps.cartocdn.com/${tileSet}/{z}/{x}/{y}{r}.png", {
+            const tileLayerOptions = {
               maxZoom: 19,
               subdomains: "abcd",
               detectRetina: true,
               attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
               updateWhenIdle: true,
               keepBuffer: 4,
+            };
+            const baseLayers = {
+              "Dark map": L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", tileLayerOptions),
+              "Light map": L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", tileLayerOptions),
+            };
+            const selectedBaseLayer = "${selectedMapTheme}" === "light" ? baseLayers["Light map"] : baseLayers["Dark map"];
+            selectedBaseLayer.addTo(map);
+            L.control.layers(baseLayers, null, {
+              collapsed: true,
+              position: "topright",
             }).addTo(map);
+            map.on("baselayerchange", (event) => {
+              const mapTheme = event.name === "Light map" ? "light" : "dark";
+              window.parent.postMessage({
+                type: "presence-timeline-map-theme-change",
+                mapTheme,
+              }, "*");
+            });
 
             const bounds = [];
             const stopMarkers = [];

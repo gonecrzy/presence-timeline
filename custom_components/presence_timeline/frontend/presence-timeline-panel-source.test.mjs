@@ -11,8 +11,9 @@ test("panel source renders the map inline via srcdoc with carto tile safeguards"
   assert.match(source, /globalThis\.localStorage\?\.setItem\(PANEL_PREFERENCES_KEY,/);
   assert.match(source, /const LEAFLET_CSS_URL = `\$\{STATIC_ROOT\}\/vendor\/leaflet\.css`;/);
   assert.match(source, /const LEAFLET_JS_URL = `\$\{STATIC_ROOT\}\/vendor\/leaflet\.js`;/);
-  assert.match(source, /const tileSet = this\._selectedMapTheme === "light" \? "light_all" : "dark_all";/);
-  assert.match(source, /<select id="map-theme-select" aria-label="Map theme">/);
+  assert.match(source, /L\.control\.layers\(baseLayers, null,/);
+  assert.match(source, /window\.parent\.postMessage\(\{/);
+  assert.match(source, /presence-timeline-map-theme-change/);
   assert.match(source, /fadeAnimation:\s*false/);
   assert.match(source, /\.leaflet-container img\.leaflet-tile\.leaflet-tile-loaded\s*\{/);
 });

@@ -1,5 +1,5 @@
 DOMAIN = "presence_timeline"
-INTEGRATION_VERSION = "0.3.17"
+INTEGRATION_VERSION = "0.3.18"
 
 PLATFORMS = ("device_tracker", "sensor")
 
