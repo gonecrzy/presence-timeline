@@ -7,7 +7,9 @@ import {
   buildRefreshStatus,
   formatDistanceImperial,
   formatMemberBadgeStatus,
+  getMapThemeOptions,
   formatStopWaypointLabel,
+  normalizeMapTheme,
   normalizeHistoryHours,
   resolveAssetVersion,
 } from "./presence-timeline-panel-utils.js";
@@ -24,6 +26,19 @@ test("buildHistoryWindow returns the selected time range", () => {
   assert.equal(window.hours, 12);
   assert.equal(window.startIso, "2026-07-11T00:00:00.000Z");
   assert.equal(window.endIso, "2026-07-11T12:00:00.000Z");
+});
+
+test("map theme helpers expose supported themes and normalize invalid values", () => {
+  assert.deepEqual(
+    getMapThemeOptions(),
+    [
+      { value: "dark", label: "Dark map" },
+      { value: "light", label: "Light map" },
+    ],
+  );
+  assert.equal(normalizeMapTheme("light"), "light");
+  assert.equal(normalizeMapTheme("dark"), "dark");
+  assert.equal(normalizeMapTheme("other", "light"), "light");
 });
 
 test("resolveAssetVersion uses the module query version when present", () => {

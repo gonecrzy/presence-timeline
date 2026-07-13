@@ -9,17 +9,20 @@ import {
   formatDistanceImperial,
   formatMemberBadgeStatus,
   getHistoryWindowOptions,
+  getMapThemeOptions,
   normalizeHistoryHours,
+  normalizeMapTheme,
   resolveAssetVersion,
 } from "./presence-timeline-panel-utils.js";
 
 const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
 const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
 const DEFAULT_HISTORY_HOURS = 24;
+const DEFAULT_MAP_THEME = "dark";
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.15");
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.16");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -38,6 +41,7 @@ class PresenceTimelinePanel extends HTMLElement {
     this._pendingMapCommand = null;
     this._selectedHistoryHours = DEFAULT_HISTORY_HOURS;
     this._showHistoryRoutes = true;
+    this._selectedMapTheme = DEFAULT_MAP_THEME;
   }
 
   set hass(hass) {
@@ -54,6 +58,10 @@ class PresenceTimelinePanel extends HTMLElement {
     this._selectedHistoryHours = normalizeHistoryHours(
       this._selectedHistoryHours || this._panel?.config?.defaultHistoryHours,
       normalizeHistoryHours(this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS),
+    );
+    this._selectedMapTheme = normalizeMapTheme(
+      this._selectedMapTheme || this._panel?.config?.defaultMapTheme,
+      normalizeMapTheme(this._panel?.config?.defaultMapTheme ?? DEFAULT_MAP_THEME, DEFAULT_MAP_THEME),
     );
     this._ensureLoaded();
   }
@@ -185,6 +193,16 @@ class PresenceTimelinePanel extends HTMLElement {
     this._render();
   }
 
+  _handleMapThemeChange(value) {
+    const nextTheme = normalizeMapTheme(value, this._selectedMapTheme || DEFAULT_MAP_THEME);
+    if (nextTheme === this._selectedMapTheme) {
+      return;
+    }
+    this._selectedMapTheme = nextTheme;
+    this._renderedMapSignature = null;
+    this._render();
+  }
+
   _refreshStatus() {
     return buildRefreshStatus(this._integrationStatus, new Date(), this._summary);
   }
@@ -194,6 +212,7 @@ class PresenceTimelinePanel extends HTMLElement {
     const mapModel = this._buildMapModel(selectedMember, this._memberPanel);
     const refreshStatus = this._refreshStatus();
     const historyWindowOptions = getHistoryWindowOptions();
+    const mapThemeOptions = getMapThemeOptions();
     const historyStops = this._showHistoryRoutes ? mapModel.stops : [];
     const historyTrips = this._showHistoryRoutes
       ? (this._memberPanel?.timeline ?? []).filter((item) => item.kind === "trip")
@@ -544,6 +563,11 @@ class PresenceTimelinePanel extends HTMLElement {
                 <option value="${option.hours}" ${option.hours === this._selectedHistoryHours ? "selected" : ""}>${option.label}</option>
               `).join("")}
             </select>
+            <select id="map-theme-select" aria-label="Map theme">
+              ${mapThemeOptions.map((option) => `
+                <option value="${option.value}" ${option.value === this._selectedMapTheme ? "selected" : ""}>${option.label}</option>
+              `).join("")}
+            </select>
             <button id="toggle-history-button" class="toggle-button" type="button" aria-pressed="${this._showHistoryRoutes}">
               ${this._showHistoryRoutes ? "History on" : "Current only"}
             </button>
@@ -627,6 +651,9 @@ class PresenceTimelinePanel extends HTMLElement {
     this.shadowRoot.querySelector("#toggle-history-button")?.addEventListener("click", () => this._toggleHistoryRoutes());
     this.shadowRoot.querySelector("#history-window-select")?.addEventListener("change", (event) => {
       this._handleHistoryWindowChange(event.target.value);
+    });
+    this.shadowRoot.querySelector("#map-theme-select")?.addEventListener("change", (event) => {
+      this._handleMapThemeChange(event.target.value);
     });
     this.shadowRoot.querySelectorAll(".badge").forEach((button) => {
       button.addEventListener("click", () => this._loadMemberPanel(button.dataset.memberId));
@@ -719,7 +746,7 @@ class PresenceTimelinePanel extends HTMLElement {
       return;
     }
 
-    const nextSignature = createMapRenderSignature(mapModel);
+    const nextSignature = `${this._selectedMapTheme}:${createMapRenderSignature(mapModel)}`;
     if (nextSignature === this._renderedMapSignature && frame.srcdoc) {
       return;
     }
@@ -758,6 +785,7 @@ class PresenceTimelinePanel extends HTMLElement {
 
   _mapDocument(mapModel) {
     const modelJson = JSON.stringify(mapModel).replaceAll("<", "\\u003c");
+    const tileSet = this._selectedMapTheme === "light" ? "light_all" : "dark_all";
     return `
       <!doctype html>
       <html lang="en">
@@ -856,7 +884,7 @@ class PresenceTimelinePanel extends HTMLElement {
               fadeAnimation: false,
             });
 
-            L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/${tileSet}/{z}/{x}/{y}{r}.png", {
               maxZoom: 19,
               subdomains: "abcd",
               detectRetina: true,

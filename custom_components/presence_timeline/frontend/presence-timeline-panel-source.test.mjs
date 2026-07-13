@@ -8,7 +8,8 @@ test("panel source renders the map inline via srcdoc with carto tile safeguards"
   assert.match(source, /frame\.srcdoc = this\._mapDocument\(mapModel\);/);
   assert.match(source, /const LEAFLET_CSS_URL = `\$\{STATIC_ROOT\}\/vendor\/leaflet\.css`;/);
   assert.match(source, /const LEAFLET_JS_URL = `\$\{STATIC_ROOT\}\/vendor\/leaflet\.js`;/);
-  assert.match(source, /https:\/\/\{s\}\.basemaps\.cartocdn\.com\/dark_all\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
+  assert.match(source, /const tileSet = this\._selectedMapTheme === "light" \? "light_all" : "dark_all";/);
+  assert.match(source, /<select id="map-theme-select" aria-label="Map theme">/);
   assert.match(source, /fadeAnimation:\s*false/);
   assert.match(source, /\.leaflet-container img\.leaflet-tile\.leaflet-tile-loaded\s*\{/);
 });

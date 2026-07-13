@@ -6,6 +6,10 @@ const HISTORY_WINDOW_OPTIONS = [
   { hours: 72, label: "3d" },
   { hours: 168, label: "7d" },
 ];
+const MAP_THEME_OPTIONS = [
+  { value: "dark", label: "Dark map" },
+  { value: "light", label: "Light map" },
+];
 
 const STATUS_STALE_MINUTES = 20;
 
@@ -13,9 +17,17 @@ export function getHistoryWindowOptions() {
   return HISTORY_WINDOW_OPTIONS.map((option) => ({ ...option }));
 }
 
+export function getMapThemeOptions() {
+  return MAP_THEME_OPTIONS.map((option) => ({ ...option }));
+}
+
 export function normalizeHistoryHours(value, fallback = 24) {
   const numeric = Number(value);
   return HISTORY_WINDOW_OPTIONS.some((option) => option.hours === numeric) ? numeric : fallback;
+}
+
+export function normalizeMapTheme(value, fallback = "dark") {
+  return MAP_THEME_OPTIONS.some((option) => option.value === value) ? value : fallback;
 }
 
 export function buildHistoryWindow(hours, now = new Date()) {
