@@ -18,7 +18,7 @@ const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{membe
 const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
 const MAP_FRAME_URL = `${STATIC_ROOT}/presence-timeline-map-frame.html`;
-const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.13");
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.14");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
