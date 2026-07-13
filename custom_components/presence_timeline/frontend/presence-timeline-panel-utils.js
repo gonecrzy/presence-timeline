@@ -25,6 +25,18 @@ export function buildHistoryWindow(hours, now = new Date()) {
   return { hours: normalizedHours, startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
+export function resolveAssetVersion(moduleUrl, fallback = "dev") {
+  if (!moduleUrl) {
+    return fallback;
+  }
+  try {
+    const url = new URL(moduleUrl, globalThis.location?.origin ?? "https://example.invalid");
+    return url.searchParams.get("v") || fallback;
+  } catch (_err) {
+    return fallback;
+  }
+}
+
 export function buildRefreshStatus(status, now = new Date(), summary = []) {
   const state = status?.state ?? "unknown";
   const lastEventAt = parseDate(status?.last_event_at ?? status?.lastEventAt);

@@ -9,6 +9,7 @@ import {
   formatMemberBadgeStatus,
   formatStopWaypointLabel,
   normalizeHistoryHours,
+  resolveAssetVersion,
 } from "./presence-timeline-panel-utils.js";
 
 test("normalizeHistoryHours accepts supported values and falls back otherwise", () => {
@@ -23,6 +24,17 @@ test("buildHistoryWindow returns the selected time range", () => {
   assert.equal(window.hours, 12);
   assert.equal(window.startIso, "2026-07-11T00:00:00.000Z");
   assert.equal(window.endIso, "2026-07-11T12:00:00.000Z");
+});
+
+test("resolveAssetVersion uses the module query version when present", () => {
+  assert.equal(
+    resolveAssetVersion("https://ha.example/api/presence-timeline/static/presence-timeline-panel.js?v=0.3.11"),
+    "0.3.11",
+  );
+  assert.equal(
+    resolveAssetVersion("https://ha.example/api/presence-timeline/static/presence-timeline-panel.js", "dev"),
+    "dev",
+  );
 });
 
 test("buildRefreshStatus distinguishes connected stale and retrying states", () => {

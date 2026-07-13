@@ -10,6 +10,7 @@ import {
   formatMemberBadgeStatus,
   getHistoryWindowOptions,
   normalizeHistoryHours,
+  resolveAssetVersion,
 } from "./presence-timeline-panel-utils.js";
 
 const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
@@ -17,7 +18,7 @@ const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{membe
 const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
 const MAP_FRAME_URL = `${STATIC_ROOT}/presence-timeline-map-frame.html`;
-const ASSET_VERSION = "0.3.8";
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.12");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
