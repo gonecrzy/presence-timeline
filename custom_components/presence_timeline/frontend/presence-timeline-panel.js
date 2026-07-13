@@ -17,8 +17,9 @@ const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
 const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
 const DEFAULT_HISTORY_HOURS = 24;
 const STATIC_ROOT = "/api/presence-timeline/static";
-const MAP_FRAME_URL = `${STATIC_ROOT}/presence-timeline-map-frame.html`;
-const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.14");
+const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
+const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.15");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -33,7 +34,6 @@ class PresenceTimelinePanel extends HTMLElement {
     this._loading = false;
     this._error = null;
     this._renderedMapSignature = null;
-    this._pendingMapModelCommand = null;
     this._selectedStopIndex = null;
     this._pendingMapCommand = null;
     this._selectedHistoryHours = DEFAULT_HISTORY_HOURS;
@@ -634,12 +634,7 @@ class PresenceTimelinePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".item-button[data-stop-index]").forEach((button) => {
       button.addEventListener("click", () => this._focusStop(Number(button.dataset.stopIndex)));
     });
-    this.shadowRoot.getElementById("map-frame")?.addEventListener("load", (event) => {
-      const frame = event.currentTarget;
-      frame.dataset.loaded = "true";
-      if (this._pendingMapModelCommand && this._postMapCommand(this._pendingMapModelCommand)) {
-        this._renderedMapSignature = this._pendingMapModelCommand.signature;
-      }
+    this.shadowRoot.getElementById("map-frame")?.addEventListener("load", () => {
       if (this._pendingMapCommand && this._postMapCommand(this._pendingMapCommand)) {
         this._pendingMapCommand = null;
       }
@@ -721,32 +716,16 @@ class PresenceTimelinePanel extends HTMLElement {
     const frame = this.shadowRoot.getElementById("map-frame");
     if (!frame || !mapModel.markerCount) {
       this._renderedMapSignature = null;
-      this._pendingMapModelCommand = null;
       return;
     }
 
     const nextSignature = createMapRenderSignature(mapModel);
-    this._pendingMapModelCommand = {
-      type: "presence-timeline-render-map",
-      signature: nextSignature,
-      model: mapModel,
-    };
-
-    const frameUrl = `${MAP_FRAME_URL}?v=${ASSET_VERSION}`;
-    if (frame.dataset.url !== frameUrl || !frame.getAttribute("src")) {
-      frame.dataset.url = frameUrl;
-      frame.dataset.loaded = "false";
-      frame.src = frameUrl;
+    if (nextSignature === this._renderedMapSignature && frame.srcdoc) {
       return;
     }
 
-    if (nextSignature === this._renderedMapSignature || frame.dataset.loaded !== "true") {
-      return;
-    }
-
-    if (this._postMapCommand(this._pendingMapModelCommand)) {
-      this._renderedMapSignature = nextSignature;
-    }
+    frame.srcdoc = this._mapDocument(mapModel);
+    this._renderedMapSignature = nextSignature;
   }
 
   _focusStop(index) {
@@ -775,6 +754,217 @@ class PresenceTimelinePanel extends HTMLElement {
     }
     frame.contentWindow.postMessage(command, window.location.origin);
     return true;
+  }
+
+  _mapDocument(mapModel) {
+    const modelJson = JSON.stringify(mapModel).replaceAll("<", "\\u003c");
+    return `
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <link rel="stylesheet" href="${LEAFLET_CSS_URL}?v=${ASSET_VERSION}">
+          <style>
+            html, body, #map {
+              height: 100%;
+              margin: 0;
+              background: #0f172a;
+              color: #e2e8f0;
+              font-family: system-ui, sans-serif;
+            }
+            .leaflet-container {
+              background: #0f172a;
+            }
+            .leaflet-container img.leaflet-tile.leaflet-tile-loaded {
+              opacity: 1 !important;
+              visibility: visible !important;
+            }
+            .leaflet-popup-content-wrapper,
+            .leaflet-popup-tip {
+              background: rgba(15, 23, 42, 0.96);
+              color: #e2e8f0;
+            }
+            .leaflet-popup-content {
+              margin: 12px 14px;
+              line-height: 1.45;
+              min-width: 180px;
+            }
+            .popup-title {
+              font-weight: 700;
+              margin-bottom: 6px;
+            }
+            .popup-line {
+              color: rgba(226, 232, 240, 0.86);
+              font-size: 13px;
+            }
+            .stop-waypoint {
+              background: transparent;
+              border: 0;
+            }
+            .stop-waypoint span {
+              display: grid;
+              place-items: center;
+              width: 28px;
+              height: 28px;
+              border-radius: 999px;
+              border: 2px solid #99f6e4;
+              background: rgba(15, 118, 110, 0.94);
+              color: #f8fafc;
+              font-size: 13px;
+              font-weight: 700;
+              box-shadow: 0 8px 18px rgba(15, 23, 42, 0.36);
+            }
+            .stop-waypoint.current span {
+              border-color: #fdba74;
+              background: rgba(249, 115, 22, 0.96);
+            }
+          </style>
+        </head>
+        <body>
+          <div id="map" role="img" aria-label="Presence Timeline family map"></div>
+          <script src="${LEAFLET_JS_URL}?v=${ASSET_VERSION}"></script>
+          <script>
+            const model = ${modelJson};
+
+            const escapeHtml = (value) => String(value ?? "")
+              .replaceAll("&", "&amp;")
+              .replaceAll("<", "&lt;")
+              .replaceAll(">", "&gt;")
+              .replaceAll('"', "&quot;")
+              .replaceAll("'", "&#39;");
+
+            const formatDateTime = (value) => {
+              if (!value) {
+                return "Unknown";
+              }
+              const date = new Date(value);
+              if (Number.isNaN(date.getTime())) {
+                return String(value);
+              }
+              return date.toLocaleString([], {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              });
+            };
+
+            const map = L.map(document.getElementById("map"), {
+              zoomControl: true,
+              preferCanvas: true,
+              fadeAnimation: false,
+            });
+
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+              maxZoom: 19,
+              subdomains: "abcd",
+              detectRetina: true,
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+              updateWhenIdle: true,
+              keepBuffer: 4,
+            }).addTo(map);
+
+            const bounds = [];
+            const stopMarkers = [];
+            const addBounds = (latitude, longitude) => {
+              if (latitude == null || longitude == null) {
+                return;
+              }
+              bounds.push([latitude, longitude]);
+            };
+
+            for (const member of model.markers) {
+              addBounds(member.latitude, member.longitude);
+              const marker = L.circleMarker([member.latitude, member.longitude], {
+                radius: member.selected ? 9 : 7,
+                color: "#e2e8f0",
+                weight: 2,
+                fillColor: member.selected ? "#f97316" : "#38bdf8",
+                fillOpacity: 0.95,
+              }).addTo(map);
+              marker.bindPopup(\`
+                <div class="popup-title">\${escapeHtml(member.label)}</div>
+                <div class="popup-line">\${escapeHtml(member.detail || "No recent location")}</div>
+                <div class="popup-line">Last seen: \${escapeHtml(formatDateTime(member.observedAt))}</div>
+                <div class="popup-line">Battery: \${escapeHtml(member.batteryLevel ?? "Unknown")}</div>
+              \`);
+            }
+
+            for (const segment of model.historySegments) {
+              if (segment.length < 2) {
+                continue;
+              }
+              const route = segment.map((point) => {
+                addBounds(point.latitude, point.longitude);
+                return [point.latitude, point.longitude];
+              });
+              L.polyline(route, {
+                color: "#22d3ee",
+                weight: 4,
+                opacity: 0.9,
+              }).addTo(map);
+            }
+
+            model.stops.forEach((stop, index) => {
+              addBounds(stop.latitude, stop.longitude);
+              const marker = L.marker([stop.latitude, stop.longitude], {
+                icon: L.divIcon({
+                  className: "stop-waypoint" + (stop.is_current ? " current" : ""),
+                  html: "<span>" + escapeHtml(stop.waypointLabel || String.fromCharCode(65 + (index % 26))) + "</span>",
+                  iconSize: [28, 28],
+                  iconAnchor: [14, 14],
+                }),
+              }).addTo(map);
+
+              const durationMinutes = Math.round((stop.duration_seconds || 0) / 60);
+              const address = stop.address && stop.address !== stop.label
+                ? \`<div class="popup-line">\${escapeHtml(stop.address)}</div>\`
+                : "";
+
+              marker.bindPopup(\`
+                <div class="popup-title">\${escapeHtml(stop.waypointLabel || "")}\${stop.waypointLabel ? " · " : ""}\${escapeHtml(stop.label || "Unnamed stop")}\${stop.is_current ? " · Current" : ""}</div>
+                \${address}
+                <div class="popup-line">\${durationMinutes} min</div>
+                <div class="popup-line">\${escapeHtml(formatDateTime(stop.started_at))} to \${escapeHtml(formatDateTime(stop.ended_at))}</div>
+              \`);
+              stopMarkers.push(marker);
+            });
+
+            const focusStop = (index) => {
+              const marker = stopMarkers[index];
+              if (!marker) {
+                return;
+              }
+              const latLng = marker.getLatLng();
+              map.flyTo(latLng, Math.max(map.getZoom(), 16), { duration: 0.45 });
+              marker.openPopup();
+            };
+
+            window.addEventListener("message", (event) => {
+              if (event.data?.type !== "presence-timeline-focus-stop") {
+                return;
+              }
+              const index = Number(event.data.index);
+              if (Number.isInteger(index)) {
+                focusStop(index);
+              }
+            });
+
+            if (bounds.length === 1) {
+              map.setView(bounds[0], 15);
+            } else if (bounds.length > 1) {
+              map.fitBounds(bounds, { padding: [36, 36] });
+            } else {
+              map.setView([33.0, -80.0], 11);
+            }
+
+            window.requestAnimationFrame(() => map.invalidateSize(false));
+            window.setTimeout(() => map.invalidateSize(false), 150);
+          </script>
+        </body>
+      </html>
+    `;
   }
 
   _batteryLevel(value) {
