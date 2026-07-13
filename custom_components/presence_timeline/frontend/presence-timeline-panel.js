@@ -10,6 +10,7 @@ import {
   formatMemberBadgeStatus,
   getHistoryWindowOptions,
   getMapThemeOptions,
+  mergePanelPreferences,
   normalizeHistoryHours,
   normalizeMapTheme,
   resolveAssetVersion,
@@ -19,10 +20,11 @@ const DEFAULT_SUMMARY_API = "/api/presence-timeline/panel/summary";
 const DEFAULT_MEMBER_API_TEMPLATE = "/api/presence-timeline/panel/members/{member_id}";
 const DEFAULT_HISTORY_HOURS = 24;
 const DEFAULT_MAP_THEME = "dark";
+const PANEL_PREFERENCES_KEY = "presence-timeline-panel-preferences";
 const STATIC_ROOT = "/api/presence-timeline/static";
 const LEAFLET_CSS_URL = `${STATIC_ROOT}/vendor/leaflet.css`;
 const LEAFLET_JS_URL = `${STATIC_ROOT}/vendor/leaflet.js`;
-const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.16");
+const ASSET_VERSION = resolveAssetVersion(import.meta.url, "0.3.17");
 
 class PresenceTimelinePanel extends HTMLElement {
   constructor() {
@@ -42,6 +44,7 @@ class PresenceTimelinePanel extends HTMLElement {
     this._selectedHistoryHours = DEFAULT_HISTORY_HOURS;
     this._showHistoryRoutes = true;
     this._selectedMapTheme = DEFAULT_MAP_THEME;
+    this._preferencesLoaded = false;
   }
 
   set hass(hass) {
@@ -55,14 +58,17 @@ class PresenceTimelinePanel extends HTMLElement {
 
   set panel(panel) {
     this._panel = panel;
-    this._selectedHistoryHours = normalizeHistoryHours(
-      this._selectedHistoryHours || this._panel?.config?.defaultHistoryHours,
-      normalizeHistoryHours(this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS),
-    );
-    this._selectedMapTheme = normalizeMapTheme(
-      this._selectedMapTheme || this._panel?.config?.defaultMapTheme,
-      normalizeMapTheme(this._panel?.config?.defaultMapTheme ?? DEFAULT_MAP_THEME, DEFAULT_MAP_THEME),
-    );
+    const defaults = this._defaultPanelPreferences();
+    if (!this._preferencesLoaded) {
+      const merged = mergePanelPreferences(this._readPanelPreferences(), defaults);
+      this._selectedHistoryHours = merged.historyHours;
+      this._selectedMapTheme = merged.mapTheme;
+      this._showHistoryRoutes = merged.showHistoryRoutes;
+      this._preferencesLoaded = true;
+    } else {
+      this._selectedHistoryHours = normalizeHistoryHours(this._selectedHistoryHours, defaults.historyHours);
+      this._selectedMapTheme = normalizeMapTheme(this._selectedMapTheme, defaults.mapTheme);
+    }
     this._ensureLoaded();
   }
 
@@ -179,6 +185,7 @@ class PresenceTimelinePanel extends HTMLElement {
       return;
     }
     this._selectedHistoryHours = nextHours;
+    this._writePanelPreferences();
     if (this._selectedMemberId) {
       await this._loadMemberPanel(this._selectedMemberId);
       return;
@@ -190,6 +197,7 @@ class PresenceTimelinePanel extends HTMLElement {
     this._showHistoryRoutes = !this._showHistoryRoutes;
     this._selectedStopIndex = null;
     this._pendingMapCommand = null;
+    this._writePanelPreferences();
     this._render();
   }
 
@@ -200,7 +208,41 @@ class PresenceTimelinePanel extends HTMLElement {
     }
     this._selectedMapTheme = nextTheme;
     this._renderedMapSignature = null;
+    this._writePanelPreferences();
     this._render();
+  }
+
+  _defaultPanelPreferences() {
+    return {
+      historyHours: normalizeHistoryHours(this._panel?.config?.defaultHistoryHours ?? DEFAULT_HISTORY_HOURS, DEFAULT_HISTORY_HOURS),
+      mapTheme: normalizeMapTheme(this._panel?.config?.defaultMapTheme ?? DEFAULT_MAP_THEME, DEFAULT_MAP_THEME),
+      showHistoryRoutes: true,
+    };
+  }
+
+  _readPanelPreferences() {
+    try {
+      const raw = globalThis.localStorage?.getItem(PANEL_PREFERENCES_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  _writePanelPreferences() {
+    try {
+      globalThis.localStorage?.setItem(PANEL_PREFERENCES_KEY, JSON.stringify({
+        historyHours: this._selectedHistoryHours,
+        mapTheme: this._selectedMapTheme,
+        showHistoryRoutes: this._showHistoryRoutes,
+      }));
+    } catch (_err) {
+      // Ignore storage failures so the panel continues working in restricted contexts.
+    }
   }
 
   _refreshStatus() {

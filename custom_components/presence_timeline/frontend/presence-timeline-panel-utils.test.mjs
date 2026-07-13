@@ -8,6 +8,7 @@ import {
   formatDistanceImperial,
   formatMemberBadgeStatus,
   getMapThemeOptions,
+  mergePanelPreferences,
   formatStopWaypointLabel,
   normalizeMapTheme,
   normalizeHistoryHours,
@@ -39,6 +40,23 @@ test("map theme helpers expose supported themes and normalize invalid values", (
   assert.equal(normalizeMapTheme("light"), "light");
   assert.equal(normalizeMapTheme("dark"), "dark");
   assert.equal(normalizeMapTheme("other", "light"), "light");
+});
+
+test("mergePanelPreferences normalizes stored panel state", () => {
+  assert.deepEqual(
+    mergePanelPreferences(
+      { historyHours: "48", mapTheme: "light", showHistoryRoutes: false },
+      { historyHours: 24, mapTheme: "dark", showHistoryRoutes: true },
+    ),
+    { historyHours: 48, mapTheme: "light", showHistoryRoutes: false },
+  );
+  assert.deepEqual(
+    mergePanelPreferences(
+      { historyHours: "999", mapTheme: "bogus" },
+      { historyHours: 12, mapTheme: "dark", showHistoryRoutes: true },
+    ),
+    { historyHours: 12, mapTheme: "dark", showHistoryRoutes: true },
+  );
 });
 
 test("resolveAssetVersion uses the module query version when present", () => {

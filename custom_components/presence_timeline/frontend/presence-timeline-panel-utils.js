@@ -30,6 +30,18 @@ export function normalizeMapTheme(value, fallback = "dark") {
   return MAP_THEME_OPTIONS.some((option) => option.value === value) ? value : fallback;
 }
 
+export function mergePanelPreferences(stored = {}, defaults = {}) {
+  const defaultHistoryHours = normalizeHistoryHours(defaults.historyHours ?? 24, 24);
+  const defaultMapTheme = normalizeMapTheme(defaults.mapTheme ?? "dark", "dark");
+  const defaultShowHistoryRoutes = typeof defaults.showHistoryRoutes === "boolean" ? defaults.showHistoryRoutes : true;
+
+  return {
+    historyHours: normalizeHistoryHours(stored.historyHours, defaultHistoryHours),
+    mapTheme: normalizeMapTheme(stored.mapTheme, defaultMapTheme),
+    showHistoryRoutes: typeof stored.showHistoryRoutes === "boolean" ? stored.showHistoryRoutes : defaultShowHistoryRoutes,
+  };
+}
+
 export function buildHistoryWindow(hours, now = new Date()) {
   const normalizedHours = normalizeHistoryHours(hours);
   const end = new Date(now);
