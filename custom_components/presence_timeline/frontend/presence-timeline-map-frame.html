@@ -63,6 +63,7 @@
       const map = L.map(document.getElementById("map"), {
         zoomControl: true,
         preferCanvas: true,
+        fadeAnimation: false,
       });
 
       const tileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
