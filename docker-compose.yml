@@ -4,6 +4,7 @@ services:
   db:
     image: postgis/postgis:16-3.4
     container_name: presence-timeline-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: presence_timeline
       POSTGRES_USER: presence_timeline
@@ -35,6 +36,7 @@ services:
     build:
       context: ./backend
     container_name: presence-timeline-api
+    restart: unless-stopped
     environment:
       PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
       PRESENCE_TIMELINE_APP_NAME: ${PRESENCE_TIMELINE_APP_NAME:-Presence Timeline API}
@@ -62,6 +64,7 @@ services:
     build:
       context: ./backend
     container_name: presence-timeline-ingestor
+    restart: unless-stopped
     environment:
       PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
       PRESENCE_TIMELINE_APP_NAME: ${PRESENCE_TIMELINE_APP_NAME:-Presence Timeline API}
@@ -89,6 +92,7 @@ services:
     build:
       context: ./backend
     container_name: presence-timeline-geocoder
+    restart: unless-stopped
     environment:
       PRESENCE_TIMELINE_DATABASE_URL: ${PRESENCE_TIMELINE_DATABASE_URL:-postgresql+psycopg://presence_timeline:presence_timeline@db:5432/presence_timeline}
       PRESENCE_TIMELINE_ENABLE_REVERSE_GEOCODING: ${PRESENCE_TIMELINE_ENABLE_REVERSE_GEOCODING:-true}
