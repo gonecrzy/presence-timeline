@@ -1,138 +1,138 @@
 # Presence Timeline
 
-Location history and family presence timelines for Home Assistant.
+Presence Timeline is a private, self-hosted Home Assistant location history stack. Home Assistant supplies live tracker events, while this repo keeps durable history, derives trips and stops, enriches places, and exposes the data back to Home Assistant through entities and a custom panel.
 
-Private, self-hosted Home Assistant location history service and dashboard backend.
-
-This branch is the Home Assistant-focused fork of the project. The Android app work is intentionally left behind on `feat/backend-foundation`.
-
-## Repository layout
-
-- `custom_components/presence_timeline/`: Home Assistant custom integration intended for HACS delivery
-- `backend/`: FastAPI service, normalized domain models, Home Assistant provider, and tests
-- `docs/`: architecture notes and branch roadmap
-- `docker-compose.yml`: local API + PostGIS runtime plus background workers
-
-## Architecture
-
-This repo currently uses a sidecar model:
+The current product shape is a sidecar model:
 
 - Home Assistant installs `custom_components/presence_timeline/` through HACS or as a manual custom integration.
-- The backend still runs separately in Docker and is reached over HTTP by the integration.
-- Home Assistant is the live event source; the backend owns normalized history, places, trips, stops, and safety derivation.
-- Reverse geocoding is cache-backed and resolved by a background worker, not by live API reads.
+- The backend runs separately with Docker Compose and is reached over HTTP by the integration.
+- PostgreSQL/PostGIS stores normalized location history, derived stays, trips, daily summaries, safety events, places, and reverse-geocode cache rows.
+- Background workers handle Home Assistant ingestion and reverse geocoding so API reads do not block on external lookups.
 
-If you prefer HACS, this is the right direction. HACS distributes the integration only. It does not run the backend container for you.
+## Repository Layout
 
-## HACS status
+- `backend/`: FastAPI service, SQLAlchemy/PostGIS models, Alembic migrations, Home Assistant provider, workers, and pytest suite.
+- `custom_components/presence_timeline/`: Home Assistant custom integration, device tracker and sensor entities, panel API proxy, and frontend panel assets.
+- `custom_components/presence_timeline/frontend/`: Browser panel source, map frame, utility modules, and Node test files.
+- `docs/`: architecture notes and roadmap.
+- `docker-compose.yml`: local API, PostGIS, migrator, ingestion worker, and geocoder worker runtime.
+- `AGENTS.md`: repo-local workflow and verification rules for Codex-style agents.
 
-The repo now has the root `hacs.json` expected by HACS custom repositories.
+## Current Capabilities
 
-Remaining HACS packaging constraints:
+- FastAPI routes for health, members, member history, timeline, stops, trips, safety events, and places.
+- Home Assistant summary, ingestion status, and member panel endpoints under `/api/v1/home-assistant`.
+- Snapshot plus websocket ingestion from coordinate-bearing `device_tracker.*` states.
+- Auto-discovery of Home Assistant trackers into backend members and devices.
+- Optional bootstrap member config through `PRESENCE_TIMELINE_HOME_ASSISTANT_BOOTSTRAP_MEMBERS`.
+- Device ignore support for hiding discovered trackers without removing config.
+- Dedupe logic for near-duplicate stationary location samples.
+- Derived stays, stop summaries, trips, trip routes, daily summaries, and safe-zone events.
+- Cached reverse geocoding and address search.
+- Home Assistant config flow with backend URL, optional access token, and polling interval.
+- Home Assistant tracker entities, member battery/place/last-seen sensors, and ingestion diagnostic sensors.
+- Home Assistant sidebar panel with current member status, map/history views, timeline, stops, and backend status.
 
-- The repository must be public on GitHub for HACS to install it.
-- If you want to pursue HACS default-store inclusion later, add brand assets, HACS validation, Hassfest, and GitHub releases.
+## Current Limitations
 
-HACS references:
+- Backend auth defaults to `open` local-development mode. OIDC settings exist, but OIDC authentication is not implemented.
+- The integration distributes the Home Assistant custom component only; HACS does not run the backend container.
+- Production packaging is still undecided for users who want Home Assistant to manage the backend runtime.
+- Home Assistant-native ingress/session trust boundaries are not implemented yet.
+- HACS default-store readiness still needs brand assets, HACS validation, Hassfest, releases, and public repository hosting.
 
-- https://www.hacs.xyz/docs/publish/start/
-- https://www.hacs.xyz/docs/publish/integration/
+## Run The Backend
 
-## Installation model
-
-### 1. Run the backend
-
-Start the API, database, migrations, and background workers:
+Copy `.env.example` to `.env` if you want to override defaults, then start the local stack:
 
 ```bash
 docker compose up --build
 ```
 
-The API will be available at `http://localhost:${PRESENCE_TIMELINE_API_PORT:-8000}` by default.
+The API is available at:
 
-### 2. Install the Home Assistant integration
+```text
+http://localhost:${PRESENCE_TIMELINE_API_PORT:-8000}
+```
 
-Once the repo is on public GitHub, add it to HACS as a custom repository of type `Integration`, then install `Presence Timeline`.
+The Compose stack includes:
 
-Current integration behavior:
+- `db`: PostGIS database with persistent external volume `gpstrack_postgis_data`.
+- `migrator`: one-shot Alembic migration job.
+- `api`: FastAPI app served with Uvicorn.
+- `ingestor`: Home Assistant snapshot and websocket ingestion worker.
+- `geocoder`: reverse-geocode cache backfill worker.
 
-- config entry asks for backend base URL
+## Install The Home Assistant Integration
+
+For manual install, copy or mount `custom_components/presence_timeline/` into Home Assistant's `custom_components/` directory and restart Home Assistant.
+
+For HACS custom repository install, the repository must be public and added as an `Integration` repository. The root `hacs.json` and integration `manifest.json` are present for that path.
+
+After installation, add the `Presence Timeline` integration in Home Assistant and configure:
+
+- backend base URL
 - optional access token
-- configurable polling interval
-- creates one tracker entity per tracked member
-- exposes battery, place, and last-seen sensors
-- uses cached labels and falls back to coordinates while enrichment is pending
+- polling interval, from 15 to 3600 seconds
 
-### 3. Connect Home Assistant to the backend
-
-In Home Assistant, configure the integration with the backend URL. The integration polls:
+The integration polls the backend summary endpoint and proxies panel requests through Home Assistant:
 
 - `/api/v1/home-assistant/summary`
+- `/api/v1/home-assistant/status`
+- `/api/v1/home-assistant/members/{member_id}/panel`
 
-The backend remains the history engine; the custom integration is the Home Assistant-facing wrapper.
+## Home Assistant Ingestion
 
-## Local development
+To ingest live Home Assistant tracker data, enable the worker and provide a websocket URL plus long-lived access token:
 
-1. Copy `.env.example` to `.env` if you want to override defaults.
-2. Start PostGIS, run migrations, and boot the API plus workers:
-
-```bash
-docker compose up --build
+```env
+PRESENCE_TIMELINE_ENABLE_HOME_ASSISTANT_INGESTION=true
+PRESENCE_TIMELINE_HOME_ASSISTANT_WS_URL=ws://homeassistant.local:8123/api/websocket
+PRESENCE_TIMELINE_HOME_ASSISTANT_ACCESS_TOKEN=replace-me
 ```
 
-3. The API will be available at `http://localhost:${PRESENCE_TIMELINE_API_PORT:-8000}`.
+On startup, the worker imports current coordinate-bearing `device_tracker.*` states from `/api/states`, then subscribes to websocket `state_changed` events. Mirrored Presence Timeline tracker entities are ignored so the integration does not ingest its own output.
 
-## Backend verification
+Reverse geocoding runs separately:
 
-From `backend/`:
+- ingestion queues rounded coordinates into the cache table
+- the `geocoder` worker resolves pending cache rows
+- API responses prefer saved places, then cached geocode labels, then coordinate fallback
+
+## Development
+
+Backend setup from `backend/`:
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e '.[dev]'
-pytest
 ```
 
-## Current branch scope
+Backend verification from `backend/`:
 
-This branch currently provides:
+```bash
+pytest
+ruff check .
+```
 
-- FastAPI routes for health, members, member history/timeline/stops/trips/safety, and places
-- a Home Assistant summary endpoint for integration polling
-- Alembic-backed schema migration flow
-- SQLAlchemy/PostGIS domain model for family location history
-- Home Assistant snapshot + websocket ingestion with auto-discovered trackers
-- background reverse-geocode cache enrichment for request-time labels
-- reverse geocoded places plus safe-zone-derived events
-- derived trips, trip routes, stop summaries, and daily summaries
-- a Home Assistant custom integration scaffold with config flow, coordinator, tracker, and sensors
+Frontend panel tests from the repo root:
 
-Not implemented yet:
+```bash
+node --test custom_components/presence_timeline/frontend/*.test.mjs
+```
 
-- Home Assistant dashboard or panel UI
-- Home Assistant-native auth, ingress, or session handling
-- production packaging choice if you want Home Assistant to also manage backend runtime
+Compose verification from the repo root:
 
-## Home Assistant ingestion
+```bash
+docker compose config
+```
 
-For live ingestion, enable the worker and provide a Home Assistant websocket URL plus long-lived access token. On startup the worker imports current coordinate-bearing `device_tracker.*` states from `/api/states`, then stays subscribed to websocket `state_changed` events.
+## Database Lifecycle
 
-Reverse geocoding runs separately from API reads:
+Schema changes go through Alembic under `backend/alembic/versions/`.
 
-- ingestion queues rounded coordinates into a cache table
-- the `geocoder` worker backfills recent points and resolves pending cache entries
-- API routes use `saved place -> cached geocode -> coordinate fallback`
-
-Optional overrides:
-
-- `PRESENCE_TIMELINE_HOME_ASSISTANT_BOOTSTRAP_MEMBERS` can pre-seed member metadata such as child/parent classification.
-- Discovered devices can be hidden later through the member device ignore API instead of removing them from config.
-
-## Database lifecycle
-
-Schema changes go through Alembic.
-
-Useful commands:
+Useful backend commands:
 
 ```bash
 cd backend
@@ -140,9 +140,9 @@ cd backend
 alembic upgrade head
 python -m app.workers.retention
 python -m app.workers.home_assistant
-python -m app.workers.reverse_geocoding
+python -u -m app.workers.reverse_geocoding
 ```
 
-## Next-step planning
+## Planning Docs
 
-See [docs/architecture.md](/root/gpstrack/docs/architecture.md) for the current architecture and [docs/home-assistant-roadmap.md](/root/gpstrack/docs/home-assistant-roadmap.md) for the branch assessment and recommended next slices.
+See [docs/architecture.md](/root/gpstrack/docs/architecture.md) for the current architecture and [docs/home-assistant-roadmap.md](/root/gpstrack/docs/home-assistant-roadmap.md) for branch assessment and next slices.

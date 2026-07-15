@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from app.services.reverse_geocode_cache import ReverseGeocodeCacheService
